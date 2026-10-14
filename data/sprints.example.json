@@ -1,0 +1,32 @@
+[
+  {
+    "id": "Q1-1",
+    "jiraSprintId": null,
+    "startDate": null,
+    "endDate": null,
+    "committed": 40,
+    "delivered": 36,
+    "scope": null,
+    "devs": 5,
+    "devDays": 45,
+    "bucketA": null,
+    "bucketB": null,
+    "context": "Example sprint",
+    "health": {}
+  },
+  {
+    "id": "Q1-2",
+    "jiraSprintId": null,
+    "startDate": null,
+    "endDate": null,
+    "committed": 42,
+    "delivered": 40,
+    "scope": null,
+    "devs": 5,
+    "devDays": 50,
+    "bucketA": null,
+    "bucketB": null,
+    "context": "Example sprint, full team",
+    "health": {}
+  }
+]

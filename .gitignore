@@ -1,0 +1,19 @@
+# Dependencies & build output
+node_modules/
+dist/
+dist-server/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local team data (copy data/sprints.example.json → data/sprints.json)
+data/*.json
+!data/*.example.json
+
+# OS / editor / logs
+.DS_Store
+*.log
+.vscode/
+.idea/
