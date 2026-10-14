@@ -1,28 +1,30 @@
 # SM Dashboard
 
-Mini web local para el Scrum Master: burnup del sprint activo con datos reales de Jira.
+> **Language:** English. See [README.es.md](README.es.md) for Spanish.
 
-## Requisitos
+Local web app for Scrum Masters: active-sprint burnup with live Jira data, velocity history, and planning helpers.
 
-- Node 18+ (el proyecto usa `fetch` nativo)
-- Acceso a Jira Cloud con permisos de lectura en el proyecto
+## Requirements
 
-## Setup inicial (una sola vez)
+- Node 18+ (the project uses native `fetch`)
+- Jira Cloud read access to your project/board
 
-### 1. Crear un API token de Atlassian
+## One-time setup
 
-1. Ir a [Atlassian Account → Security → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
-2. Hacer clic en **Create API token**
-3. Ponerle un nombre descriptivo, por ejemplo `sm-dashboard-local`
-4. Copiar el token (no se puede volver a ver después)
+### 1. Create an Atlassian API token
 
-### 2. Crear el archivo `.env`
+1. Go to [Atlassian Account → Security → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create API token**
+3. Use a descriptive name, e.g. `sm-dashboard-local`
+4. Copy the token (you cannot view it again later)
+
+### 2. Create the `.env` file
 
 ```bash
 cp .env.example .env
 ```
 
-Editar `.env` con tus datos:
+Edit `.env` with your values:
 
 ```env
 JIRA_BASE_URL=https://your-company.atlassian.net
@@ -35,65 +37,62 @@ ESTIMATE_FIELD=customfield_10016
 PORT=3001
 ```
 
-> El `.env` está en `.gitignore` — nunca se sube al repo.
-> `BURNUP_TEAMS` define el selector de equipo del burnup (`Nombre:BoardId`). El nombre debe aparecer en el título de los sprints de Jira.
-> `ESTIMATE_FIELD` es el campo de Story Points de tu Jira (varía entre instancias).
+> `.env` is in `.gitignore` — it is never committed.
+> `BURNUP_TEAMS` configures the burnup team selector (`Name:BoardId`). The name must appear in Jira sprint titles.
+> `ESTIMATE_FIELD` is your Jira Story Points field (varies by instance).
+> `PORT` is used by the Express backend and by Vite’s `/api` proxy. If 3001 is in use, pick another (e.g. `3002`) and restart `npm run dev`.
 
-### 3. Crear el store de sprints
+### 3. Create the sprint store
 
 ```bash
 cp data/sprints.example.json data/sprints.json
 ```
 
-`data/sprints.json` guarda el histórico de velocidad del equipo y está en `.gitignore`.
-> `PORT` controla tanto el backend Express como el proxy de Vite hacia `/api`. Si el 3001 está ocupado, usa otro (p. ej. `3002`) y reinicia `npm run dev`.
+`data/sprints.json` holds your team’s velocity history and is listed in `.gitignore`.
 
-### 4. Instalar dependencias y arrancar
+### 4. Install dependencies and run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abrir [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5173](http://localhost:5173).
 
-## Cómo cambiar de sprint
+The UI language (English / Spanish) can be changed from the selector in the top bar. Your choice is saved in the browser (`localStorage`).
 
-Solo editar `SPRINT_ID` en `.env` y pulsar **Actualizar** en la web (o reiniciar el servidor).
+## Changing the active sprint
 
-## Estructura
+Edit `SPRINT_ID` in `.env` and click **Actualizar** in the UI (or restart the server). The burnup tab also lets you pick a sprint from Jira when teams are configured.
+
+## Project layout
 
 ```
 sm-dashboard/
 ├── server/
-│   ├── index.ts        — Express server con /api/burnup
-│   ├── burnup.ts       — lógica GreenHopper + fallback REST
-│   ├── jira-client.ts  — auth y fetch helpers
-│   └── types.ts        — tipos compartidos
+│   ├── index.ts        — Express server (/api/*)
+│   ├── burnup.ts       — GreenHopper + REST fallback
+│   ├── jira-client.ts  — auth and fetch helpers
+│   └── types.ts        — shared types
 ├── src/
 │   ├── App.tsx
 │   ├── components/BurnupChart.tsx
 │   └── lib/
-│       ├── api.ts      — fetch /api/burnup desde el cliente
-│       └── types.ts    — re-exporta los tipos del servidor
+│       ├── api.ts      — client calls to /api
+│       └── types.ts    — re-exports server types
 └── .env.example
 ```
 
-## Datos: GreenHopper vs fallback REST
+## Data: GreenHopper vs REST fallback
 
-El servidor intenta primero el endpoint interno de GreenHopper (`scopechangeburndownchart`), que
-devuelve la serie temporal completa (mismo origen que la gráfica de Jira).
+The server first calls the internal GreenHopper endpoint (`scopechangeburndownchart`), which returns the full time series (same source as Jira’s chart).
 
-Si GreenHopper no está disponible o devuelve un error, se usa la Jira REST API oficial,
-que solo puede mostrar los totales actuales (sin línea de progreso diario). La web muestra
-un aviso amarillo en ese caso.
+If GreenHopper is unavailable or errors, it falls back to the official Jira REST API, which only exposes current totals (no daily progress line). The UI shows a yellow notice in that case.
 
-## Definición de "entregado"
+## Definition of “done” (delivered)
 
-Igual que en `metrics/velocity-history.md`:
+For velocity and related stats:
 
-- **Entregado = Done + Waiting for Release**
+- **Delivered = Done + Waiting for Release**
 
-La stat "Done + Waiting for Release" usa esta definición.
-La gráfica de Completado usa solo lo que GreenHopper marca como `done` en el board
-(que puede diferir ligeramente según la configuración de columnas).
+The “Done + Waiting for Release” stat uses this rule. The completion line on the chart follows GreenHopper’s `done` series on the board, which may differ slightly from column mapping.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type SprintRecord, type PlanningResult } from '../lib/types'
 import { fetchPlanning } from '../lib/api'
+import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
   sprints: SprintRecord[]
@@ -11,6 +12,7 @@ function calcDevDays(devsWithDays: { days: number; absences: number }[], sprintD
 }
 
 export default function PlanningCalculator({ sprints }: Props) {
+  const { t } = useI18n()
   const referenceCandidates = sprints.filter(
     (s) => s.delivered != null && s.devDays != null
   )
@@ -18,7 +20,7 @@ export default function PlanningCalculator({ sprints }: Props) {
   const defaultRef = referenceCandidates[referenceCandidates.length - 1]?.id ?? ''
 
   const [sprintDays, setSprintDays] = useState(10)
-  const [teamSize, setTeamSize] = useState(6)      // total devs in team (for theoretical max)
+  const [teamSize, setTeamSize] = useState(6)
   const [referenceId, setReferenceId] = useState(defaultRef)
   const [devCount, setDevCount] = useState(6)
   const [devRows, setDevRows] = useState<{ days: number; absences: number }[]>(
@@ -30,7 +32,6 @@ export default function PlanningCalculator({ sprints }: Props) {
   const [goalPlanned, setGoalPlanned] = useState<number | ''>('')
   const [goalRelated, setGoalRelated] = useState<number | ''>('')
 
-  // Sync devRows length when devCount changes
   useEffect(() => {
     setDevRows((prev) => {
       if (devCount > prev.length) {
@@ -77,62 +78,63 @@ export default function PlanningCalculator({ sprints }: Props) {
 
   return (
     <div style={{ padding: '24px', maxWidth: 860, fontFamily: 'system-ui, sans-serif' }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 600 }}>Calculadora de Planning</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 600 }}>{t('planning.title')}</h2>
       <p style={{ margin: '0 0 24px', fontSize: 13, color: '#666' }}>
-        Calcula el techo de SP y el reparto cubeta A / cubeta B para el próximo sprint.
+        {t('planning.subtitle')}
       </p>
 
       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {/* Left: inputs */}
         <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <FormRow label="Sprint de referencia"
-            hint="Último sprint comparable con días-persona registrados">
+          <FormRow label={t('planning.referenceSprint')} hint={t('planning.referenceHint')}>
             <select value={referenceId} onChange={(e) => setReferenceId(e.target.value)} style={inputStyle}>
-              <option value="">— Seleccionar —</option>
+              <option value="">{t('planning.selectPlaceholder')}</option>
               {referenceCandidates.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.id} — {s.delivered} SP entregados ({s.devDays} días-persona)
+                  {t('planning.referenceOption', {
+                    id: s.id,
+                    delivered: s.delivered ?? 0,
+                    devDays: s.devDays ?? 0,
+                  })}
                 </option>
               ))}
             </select>
             {referenceCandidates.length === 0 && (
               <span style={{ fontSize: 12, color: '#d97706' }}>
-                Ningún sprint tiene días-persona registrados. Edítalos en el panel de Velocidad.
+                {t('planning.noReference')}
               </span>
             )}
           </FormRow>
 
           <div style={{ display: 'flex', gap: 12 }}>
-            <FormRow label="Días laborables del sprint">
+            <FormRow label={t('planning.sprintWorkdays')}>
               <input type="number" value={sprintDays} min={1} max={30} style={{ ...inputStyle, width: 80 }}
                 onChange={(e) => setSprintDays(Number(e.target.value))} />
             </FormRow>
-            <FormRow label="Devs en el equipo (total)"
-              hint="Para capacidad teórica máxima">
+            <FormRow label={t('planning.teamSize')} hint={t('planning.teamSizeHint')}>
               <input type="number" value={teamSize} min={1} max={30} style={{ ...inputStyle, width: 80 }}
                 onChange={(e) => setTeamSize(Math.max(1, Number(e.target.value)))} />
             </FormRow>
           </div>
 
-          <FormRow label="Devs disponibles este sprint">
+          <FormRow label={t('planning.devsAvailable')}>
             <input type="number" value={devCount} min={1} max={20} style={{ ...inputStyle, width: 80 }}
               onChange={(e) => setDevCount(Math.max(1, Number(e.target.value)))} />
           </FormRow>
 
           <div>
             <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
-              Disponibilidad por dev
+              {t('planning.availabilityTitle')}
             </div>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
-              Deja "días propios" en 0 para usar los días del sprint. "Ausencias" = días de baja/vacaciones.
+              {t('planning.availabilityHint')}
             </div>
             <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <th style={thStyle}>Dev</th>
-                  <th style={thStyle}>Días propios (0 = sprint)</th>
-                  <th style={thStyle}>Ausencias (días)</th>
-                  <th style={thStyle}>Neto</th>
+                  <th style={thStyle}>{t('planning.colDev')}</th>
+                  <th style={thStyle}>{t('planning.colOwnDays')}</th>
+                  <th style={thStyle}>{t('planning.colAbsences')}</th>
+                  <th style={thStyle}>{t('planning.colNet')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,7 +142,7 @@ export default function PlanningCalculator({ sprints }: Props) {
                   const net = (row.days > 0 ? row.days : sprintDays) - row.absences
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '4px 8px', color: '#555' }}>Dev {i + 1}</td>
+                      <td style={{ padding: '4px 8px', color: '#555' }}>{t('planning.colDev')} {i + 1}</td>
                       <td style={{ padding: '4px 8px' }}>
                         <input type="number" value={row.days || ''} min={0} style={{ ...inputStyle, width: 70 }}
                           onChange={(e) => updateDevRow(i, 'days', e.target.value)} placeholder="0" />
@@ -159,13 +161,13 @@ export default function PlanningCalculator({ sprints }: Props) {
               <tfoot>
                 <tr style={{ borderTop: '2px solid #e5e7eb' }}>
                   <td colSpan={3} style={{ padding: '6px 8px', fontWeight: 600, fontSize: 13 }}>
-                    Total días-persona disponibles
+                    {t('planning.totalPersonDays')}
                   </td>
                   <td style={{ padding: '6px 8px', fontWeight: 700, fontSize: 14 }}>{devDays}d</td>
                 </tr>
                 <tr>
                   <td colSpan={3} style={{ padding: '2px 8px', fontSize: 12, color: '#888' }}>
-                    Máximo teórico ({teamSize} devs × {sprintDays} días)
+                    {t('planning.theoreticalMax', { devs: teamSize, days: sprintDays })}
                   </td>
                   <td style={{ padding: '2px 8px', fontSize: 12, color: '#888' }}>{theoreticalMax}d</td>
                 </tr>
@@ -182,7 +184,7 @@ export default function PlanningCalculator({ sprints }: Props) {
               opacity: (!referenceId || devDays <= 0) ? 0.5 : 1,
             }}
           >
-            {loading ? 'Calculando…' : 'Calcular techo'}
+            {loading ? t('planning.calculating') : t('planning.calculate')}
           </button>
 
           {error && (
@@ -192,7 +194,6 @@ export default function PlanningCalculator({ sprints }: Props) {
           )}
         </div>
 
-        {/* Right: result + goal calculator */}
         <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {result && (
             <ResultPanel
@@ -203,22 +204,21 @@ export default function PlanningCalculator({ sprints }: Props) {
             />
           )}
 
-          {/* Goal % calculator — always visible */}
           <div style={{
             border: '1px solid #e2e8f0', borderRadius: 10,
             padding: 20, background: '#f8fafc',
           }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              % SP orientados a goals
+              {t('planning.goalTitle')}
             </div>
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-              Calcula qué porcentaje de los SP planificados están vinculados a los goals del sprint.
+              {t('planning.goalSubtitle')}
             </div>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>
-                  SP planificados (100%)
+                  {t('planning.goalPlanned')}
                 </label>
                 <input
                   type="number"
@@ -228,18 +228,17 @@ export default function PlanningCalculator({ sprints }: Props) {
                   onChange={(e) => {
                     const v = e.target.value === '' ? '' : Math.max(0, Number(e.target.value))
                     setGoalPlanned(v as number | '')
-                    // clamp goalRelated if needed
                     if (typeof goalRelated === 'number' && typeof v === 'number' && goalRelated > v) {
                       setGoalRelated(v)
                     }
                   }}
-                  placeholder="ej. 30"
+                  placeholder={t('planning.placeholderPlanned')}
                 />
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>
-                  SP goal related
+                  {t('planning.goalRelated')}
                 </label>
                 <input
                   type="number"
@@ -258,18 +257,17 @@ export default function PlanningCalculator({ sprints }: Props) {
                     const v = e.target.value === '' ? '' : Math.max(0, Number(e.target.value))
                     setGoalRelated(v as number | '')
                   }}
-                  placeholder="ej. 18"
+                  placeholder={t('planning.placeholderRelated')}
                 />
                 {typeof goalRelated === 'number' &&
                   typeof goalPlanned === 'number' &&
                   goalRelated > goalPlanned && (
                   <span style={{ fontSize: 11, color: '#b91c1c' }}>
-                    No puede superar los SP planificados
+                    {t('planning.goalOverPlanned')}
                   </span>
                 )}
               </div>
 
-              {/* Result badge */}
               {goalPct !== null && (
                 <div style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -281,7 +279,7 @@ export default function PlanningCalculator({ sprints }: Props) {
                     {goalPct}%
                   </span>
                   <span style={{ fontSize: 11, color: '#6b7280', marginTop: 4, textAlign: 'center' }}>
-                    goal related
+                    {t('planning.goalRelatedBadge')}
                   </span>
                 </div>
               )}
@@ -289,7 +287,11 @@ export default function PlanningCalculator({ sprints }: Props) {
 
             {goalPct !== null && (
               <div style={{ marginTop: 12, fontSize: 11, color: '#6b7280' }}>
-                Fórmula: {goalRelated} ÷ {goalPlanned} × 100 = <strong>{goalPct}%</strong> de los SP están orientados a goals
+                {t('planning.goalFormula', {
+                  related: goalRelated as number,
+                  planned: goalPlanned as number,
+                  pct: goalPct,
+                })}
               </div>
             )}
           </div>
@@ -298,7 +300,6 @@ export default function PlanningCalculator({ sprints }: Props) {
     </div>
   )
 }
-
 
 function ResultPanel({
   result,
@@ -311,41 +312,47 @@ function ResultPanel({
   theoreticalMax: number
   theoreticalPct: number
 }) {
+  const { t } = useI18n()
   const refPct = Math.round(result.capacityPct * 100)
   const theoPct = Math.round(theoreticalPct * 100)
 
   return (
     <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
-        Resultado — sprint vs. {result.referenceSprintId}
+        {t('planning.resultTitle', { ref: result.referenceSprintId })}
       </div>
 
       <FormulaLine
-        label="Referencia"
+        label={t('planning.labelReference')}
         value={`${result.referenceDelivered} SP`}
-        sub={`${result.referenceSprintId} · ${result.referenceDevDays} días-persona`}
+        sub={t('planning.referenceSub', {
+          id: result.referenceSprintId,
+          devDays: result.referenceDevDays,
+        })}
       />
       <FormulaLine
-        label="Días-persona disponibles"
+        label={t('planning.personDaysAvailable')}
         value={`${devDays} d`}
-        sub={`de ${theoreticalMax} posibles (${devDays} ÷ ${theoreticalMax})`}
+        sub={t('planning.personDaysSub', { max: theoreticalMax, available: devDays })}
       />
 
       <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0 8px' }} />
 
-      {/* Two capacity percentages, side by side */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
         <CapacityBadge
-          label="Capacidad histórica"
+          label={t('planning.histCapacity')}
           sub={`vs. ${result.referenceSprintId}`}
           pct={refPct}
-          tip={`${devDays} ÷ ${result.referenceDevDays}`}
+          tip={t('planning.histCapacityTip', {
+            available: devDays,
+            refDevDays: result.referenceDevDays,
+          })}
         />
         <CapacityBadge
-          label="Capacidad teórica"
-          sub={`${devDays} ÷ ${theoreticalMax} d`}
+          label={t('planning.theoCapacity')}
+          sub={t('planning.theoCapacitySub', { available: devDays, max: theoreticalMax })}
           pct={theoPct}
-          tip="vs. equipo al completo"
+          tip={t('planning.theoCapacityTip')}
           dimColor
         />
       </div>
@@ -354,16 +361,25 @@ function ResultPanel({
         fontSize: 11, color: '#6b7280', padding: '6px 8px',
         background: '#f1f5f9', borderRadius: 5, marginBottom: 12,
       }}>
-        <strong>Histórica</strong> → escala la velocidad real. Úsala para calcular el techo de SP.<br />
-        <strong>Teórica</strong> → porcentaje del equipo disponible. Ponla en Confluence para el PO.
+        {t('planning.capacityHelpHistorical')}<br />
+        {t('planning.capacityHelpTheoretical')}
       </div>
 
       <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
-      <FormulaLine label="Techo calculado" value={`${result.ceiling} SP`} big />
-      <FormulaLine label="Compromiso conservador" value={`${result.conservative} SP`} sub="Recomendado para Planning (−8%)" />
+      <FormulaLine label={t('planning.ceiling')} value={`${result.ceiling} SP`} big />
+      <FormulaLine
+        label={t('planning.conservative')}
+        value={`${result.conservative} SP`}
+        sub={t('planning.conservativeSub')}
+      />
       <div style={{ marginTop: 12, padding: '8px 10px', background: '#fff', borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, color: '#555' }}>
-        <strong>Fórmula techo:</strong>{' '}
-        {devDays} ÷ {result.referenceDevDays} = {result.capacityPct.toFixed(2)} × {result.referenceDelivered} SP = <strong>{result.ceiling} SP</strong>
+        {t('planning.ceilingFormula', {
+          available: devDays,
+          refDevDays: result.referenceDevDays,
+          ratio: result.capacityPct.toFixed(2),
+          refDelivered: result.referenceDelivered,
+          ceiling: result.ceiling,
+        })}
       </div>
     </div>
   )

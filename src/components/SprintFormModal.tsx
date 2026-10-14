@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { type SprintRecord, type SprintHealth, type HealthColor } from '../lib/types'
+import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
   initial?: SprintRecord
@@ -23,18 +24,19 @@ const EMPTY: SprintRecord = {
   health: {},
 }
 
-const HEALTH_DIMS: { key: keyof SprintHealth; label: string }[] = [
-  { key: 'procesoScrum', label: 'Proceso Scrum' },
-  { key: 'claridadObjetivos', label: 'Claridad de objetivos' },
-  { key: 'colaboracion', label: 'Colaboración' },
-  { key: 'calidadTecnica', label: 'Calidad técnica' },
-  { key: 'velocidadFoco', label: 'Velocidad y foco' },
-  { key: 'aprendizaje', label: 'Aprendizaje' },
-  { key: 'comunicacion', label: 'Comunicación' },
-  { key: 'diversionEnergia', label: 'Diversión / energía' },
+const HEALTH_KEYS: (keyof SprintHealth)[] = [
+  'procesoScrum',
+  'claridadObjetivos',
+  'colaboracion',
+  'calidadTecnica',
+  'velocidadFoco',
+  'aprendizaje',
+  'comunicacion',
+  'diversionEnergia',
 ]
 
 export default function SprintFormModal({ initial, onSave, onClose }: Props) {
+  const { t } = useI18n()
   const [form, setForm] = useState<SprintRecord>(initial ?? EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +51,10 @@ export default function SprintFormModal({ initial, onSave, onClose }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.id.trim()) { setError('El ID del sprint es obligatorio (ej. Q3-4)'); return }
+    if (!form.id.trim()) {
+      setError(t('sprintForm.idRequired'))
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -76,89 +81,83 @@ export default function SprintFormModal({ initial, onSave, onClose }: Props) {
         boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
       }}>
         <h3 style={{ margin: '0 0 20px', fontSize: 17, fontWeight: 600 }}>
-          {initial ? `Editar ${initial.id}` : 'Registrar sprint'}
+          {initial ? t('sprintForm.editTitle', { id: initial.id }) : t('sprintForm.registerTitle')}
         </h3>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          {/* Identification */}
           <Row>
-            <Field label="ID sprint *" hint="ej. Q3-4">
+            <Field label={t('sprintForm.idLabel')} hint={t('sprintForm.idHint')}>
               <input value={form.id} onChange={(e) => setField('id', e.target.value)}
                 disabled={!!initial} style={inputStyle} placeholder="Q3-4" />
             </Field>
-            <Field label="Jira Sprint ID">
+            <Field label={t('sprintForm.jiraSprintId')}>
               <input type="number" value={form.jiraSprintId ?? ''} style={inputStyle}
                 onChange={(e) => setField('jiraSprintId', numOrNull(e.target.value))} />
             </Field>
           </Row>
 
           <Row>
-            <Field label="Inicio">
+            <Field label={t('sprintForm.start')}>
               <input type="date" value={form.startDate ?? ''} style={inputStyle}
                 onChange={(e) => setField('startDate', e.target.value || null)} />
             </Field>
-            <Field label="Fin">
+            <Field label={t('sprintForm.end')}>
               <input type="date" value={form.endDate ?? ''} style={inputStyle}
                 onChange={(e) => setField('endDate', e.target.value || null)} />
             </Field>
           </Row>
 
-          {/* SP */}
           <Row>
-            <Field label="SP comprometidos">
+            <Field label={t('sprintForm.spCommitted')}>
               <input type="number" value={form.committed ?? ''} style={inputStyle}
                 onChange={(e) => setField('committed', numOrNull(e.target.value))} />
             </Field>
-            <Field label="SP entregados (Done+WfR)">
+            <Field label={t('sprintForm.spDelivered')}>
               <input type="number" value={form.delivered ?? ''} style={inputStyle}
                 onChange={(e) => setField('delivered', numOrNull(e.target.value))} />
             </Field>
-            <Field label="Alcance final">
+            <Field label={t('sprintForm.finalScope')}>
               <input type="number" value={form.scope ?? ''} style={inputStyle}
                 onChange={(e) => setField('scope', numOrNull(e.target.value))} />
             </Field>
           </Row>
 
-          {/* Capacity */}
           <Row>
-            <Field label="Devs en sprint">
+            <Field label={t('sprintForm.devsInSprint')}>
               <input type="number" value={form.devs ?? ''} style={inputStyle}
                 onChange={(e) => setField('devs', numOrNull(e.target.value))} />
             </Field>
-            <Field label="Días-persona total">
+            <Field label={t('sprintForm.totalPersonDays')}>
               <input type="number" value={form.devDays ?? ''} style={inputStyle}
                 onChange={(e) => setField('devDays', numOrNull(e.target.value))} />
             </Field>
           </Row>
 
-          {/* Buckets */}
           <Row>
-            <Field label="Cubeta A (SP)">
+            <Field label={t('sprintForm.bucketA')}>
               <input type="number" value={form.bucketA ?? ''} style={inputStyle}
                 onChange={(e) => setField('bucketA', numOrNull(e.target.value))} />
             </Field>
-            <Field label="Cubeta B — Fixes (SP)">
+            <Field label={t('sprintForm.bucketB')}>
               <input type="number" value={form.bucketB ?? ''} style={inputStyle}
                 onChange={(e) => setField('bucketB', numOrNull(e.target.value))} />
             </Field>
           </Row>
 
-          {/* Context */}
-          <Field label="Contexto / notas">
+          <Field label={t('sprintForm.context')}>
             <textarea value={form.context} rows={2} style={{ ...inputStyle, resize: 'vertical' }}
               onChange={(e) => setField('context', e.target.value)} />
           </Field>
 
-          {/* Squad Health */}
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-              Squad Health Check (opcional)
+              {t('sprintForm.healthTitle')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
-              {HEALTH_DIMS.map(({ key, label }) => (
+              {HEALTH_KEYS.map((key) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, flex: 1, color: '#444' }}>{label}</span>
+                  <span style={{ fontSize: 12, flex: 1, color: '#444' }}>{t(`health.${key}` as 'health.procesoScrum')}</span>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {(['green', 'yellow', 'red'] as HealthColor[]).map((c) => (
                       <button key={c!} type="button"
@@ -184,9 +183,9 @@ export default function SprintFormModal({ initial, onSave, onClose }: Props) {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
-            <button type="button" onClick={onClose} style={btnStyle('secondary')}>Cancelar</button>
+            <button type="button" onClick={onClose} style={btnStyle('secondary')}>{t('common.cancel')}</button>
             <button type="submit" disabled={saving} style={btnStyle('primary')}>
-              {saving ? 'Guardando…' : 'Guardar'}
+              {saving ? t('common.saving') : t('common.save')}
             </button>
           </div>
         </form>

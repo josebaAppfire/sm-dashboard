@@ -1,5 +1,6 @@
 import { type ScopeChangesResponse, type ScopeChange, type L3SupportIssue } from '../lib/types'
 import { jiraIssueUrl } from '../lib/teams'
+import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
   data: ScopeChangesResponse
@@ -7,15 +8,14 @@ interface Props {
 }
 
 export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
+  const { t } = useI18n()
   const hasDelta = data.scopeDelta !== 0
   const deltaColor = data.scopeDelta > 0 ? '#b91c1c' : data.scopeDelta < 0 ? '#137333' : '#374151'
   const deltaPrefix = data.scopeDelta > 0 ? '+' : ''
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '0 24px 24px', fontFamily: 'system-ui, sans-serif' }}>
-      {/* ── Scope del sprint ── */}
       <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-      {/* Header */}
       <div style={{
         padding: '12px 20px',
         background: '#f8fafc',
@@ -26,32 +26,31 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
         flexWrap: 'wrap',
       }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
-          Scope del sprint
+          {t('scope.title')}
         </span>
-        <Stat label="Compromiso inicial" value={`${data.initialCommitment} SP`} />
+        <Stat label={t('scope.initialCommitment')} value={`${data.initialCommitment} SP`} />
         <Stat
-          label="Scope añadido"
-          value={hasDelta ? `${deltaPrefix}${data.scopeDelta} SP` : '—'}
+          label={t('scope.scopeAdded')}
+          value={hasDelta ? `${deltaPrefix}${data.scopeDelta} SP` : t('common.dash')}
           color={hasDelta ? deltaColor : '#9ca3af'}
         />
-        <Stat label="Scope total actual" value={`${data.currentScope} SP`} bold />
+        <Stat label={t('scope.currentScope')} value={`${data.currentScope} SP`} bold />
       </div>
 
-      {/* Changes table */}
       {data.changes.length === 0 ? (
         <div style={{ padding: '16px 20px', fontSize: 13, color: '#6b7280' }}>
-          Sin cambios de scope desde el inicio del sprint.
+          {t('scope.noChanges')}
         </div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #e5e7eb', background: '#f8fafc' }}>
-              <th style={th}>Issue</th>
-              <th style={th}>Resumen</th>
-              <th style={{ ...th, textAlign: 'center' }}>Tipo</th>
-              <th style={{ ...th, textAlign: 'center' }}>Estado</th>
-              <th style={{ ...th, textAlign: 'right' }}>SP inicial</th>
-              <th style={{ ...th, textAlign: 'right' }}>SP actual</th>
+              <th style={th}>{t('initialIssues.colIssue')}</th>
+              <th style={th}>{t('initialIssues.colSummary')}</th>
+              <th style={{ ...th, textAlign: 'center' }}>{t('scope.colType')}</th>
+              <th style={{ ...th, textAlign: 'center' }}>{t('initialIssues.colStatus')}</th>
+              <th style={{ ...th, textAlign: 'right' }}>{t('scope.colInitialSp')}</th>
+              <th style={{ ...th, textAlign: 'right' }}>{t('scope.colCurrentSp')}</th>
               <th style={{ ...th, textAlign: 'right' }}>Δ</th>
             </tr>
           </thead>
@@ -65,7 +64,6 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
 
       </div>
 
-      {/* ── L3 Support en el sprint ── */}
       <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
         <div style={{
           padding: '12px 20px',
@@ -77,30 +75,30 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
           flexWrap: 'wrap',
         }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
-            L3 Support en el sprint
+            {t('scope.l3Title')}
           </span>
-          <Stat label="Issues totales" value={`${data.l3AllIssues.length}`} />
-          <Stat label="SP totales" value={data.l3TotalSp > 0 ? `${data.l3TotalSp} SP` : '—'} color="#92400e" bold />
-          <Stat label="SP completados" value={data.l3DoneSp > 0 ? `${data.l3DoneSp} SP` : '—'} color="#166534" />
+          <Stat label={t('scope.totalIssues')} value={`${data.l3AllIssues.length}`} />
+          <Stat label={t('scope.totalSp')} value={data.l3TotalSp > 0 ? `${data.l3TotalSp} SP` : t('common.dash')} color="#92400e" bold />
+          <Stat label={t('scope.completedSp')} value={data.l3DoneSp > 0 ? `${data.l3DoneSp} SP` : t('common.dash')} color="#166534" />
           <Stat
-            label="SP pendientes"
-            value={(data.l3TotalSp - data.l3DoneSp) > 0 ? `${data.l3TotalSp - data.l3DoneSp} SP` : '—'}
+            label={t('scope.pendingSp')}
+            value={(data.l3TotalSp - data.l3DoneSp) > 0 ? `${data.l3TotalSp - data.l3DoneSp} SP` : t('common.dash')}
             color={(data.l3TotalSp - data.l3DoneSp) > 0 ? '#b91c1c' : '#9ca3af'}
           />
         </div>
 
         {data.l3AllIssues.length === 0 ? (
           <div style={{ padding: '16px 20px', fontSize: 13, color: '#6b7280' }}>
-            Ninguna issue de L3 Support en este sprint.
+            {t('scope.noL3')}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
-                <th style={th}>Issue</th>
-                <th style={th}>Resumen</th>
-                <th style={{ ...th, textAlign: 'center' }}>Estado</th>
-                <th style={{ ...th, textAlign: 'right' }}>SP</th>
+                <th style={th}>{t('initialIssues.colIssue')}</th>
+                <th style={th}>{t('initialIssues.colSummary')}</th>
+                <th style={{ ...th, textAlign: 'center' }}>{t('initialIssues.colStatus')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('common.sp')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,10 +109,10 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
             <tfoot>
               <tr style={{ borderTop: '2px solid #e2e8f0', background: '#fafafa' }}>
                 <td colSpan={2} style={{ ...td, fontWeight: 600, color: '#6b7280' }}>
-                  Total L3 Support
+                  {t('scope.l3Total')}
                 </td>
                 <td style={{ ...td, textAlign: 'center', fontSize: 11, color: '#6b7280' }}>
-                  {data.l3DoneIssues.length}/{data.l3AllIssues.length} cerradas
+                  {t('scope.l3Closed', { done: data.l3DoneIssues.length, total: data.l3AllIssues.length })}
                 </td>
                 <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>
                   {data.l3TotalSp} SP
@@ -129,6 +127,7 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
 }
 
 function ChangeRow({ change: c, jiraBaseUrl }: { change: ScopeChange; jiraBaseUrl: string }) {
+  const { t } = useI18n()
   const deltaColor = c.delta > 0 ? '#b91c1c' : '#137333'
   const deltaPrefix = c.delta > 0 ? '+' : ''
 
@@ -156,7 +155,7 @@ function ChangeRow({ change: c, jiraBaseUrl }: { change: ScopeChange; jiraBaseUr
         <StatusBadge status={c.status} />
       </td>
       <td style={{ ...td, textAlign: 'right', color: '#9ca3af' }}>
-        {c.initialSp > 0 ? `${c.initialSp} SP` : '—'}
+        {c.initialSp > 0 ? `${c.initialSp} SP` : t('common.dash')}
       </td>
       <td style={{ ...td, textAlign: 'right' }}>{c.currentSp} SP</td>
       <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: deltaColor }}>
@@ -184,12 +183,11 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function TypeBadge({ type }: { type: ScopeChange['type'] }) {
-  const map: Record<ScopeChange['type'], { label: string; bg: string; color: string }> = {
-    added:        { label: 'Añadida',     bg: '#fef3c7', color: '#92400e' },
-    sp_increased: { label: 'Actualizada', bg: '#e0e7ff', color: '#3730a3' },
-    sp_decreased: { label: 'Actualizada', bg: '#e0e7ff', color: '#3730a3' },
-  }
-  const s = map[type]
+  const { t } = useI18n()
+  const label =
+    type === 'added' ? t('scope.typeAdded') : t('scope.typeUpdated')
+  const bg = type === 'added' ? '#fef3c7' : '#e0e7ff'
+  const color = type === 'added' ? '#92400e' : '#3730a3'
   return (
     <span style={{
       display: 'inline-block',
@@ -197,11 +195,11 @@ function TypeBadge({ type }: { type: ScopeChange['type'] }) {
       borderRadius: 10,
       fontSize: 11,
       fontWeight: 600,
-      background: s.bg,
-      color: s.color,
+      background: bg,
+      color,
       whiteSpace: 'nowrap',
     }}>
-      {s.label}
+      {label}
     </span>
   )
 }
@@ -216,6 +214,7 @@ function Stat({ label, value, color, bold }: { label: string; value: string; col
 }
 
 function L3Row({ issue: i, jiraBaseUrl }: { issue: L3SupportIssue; jiraBaseUrl: string }) {
+  const { t } = useI18n()
   return (
     <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
       <td style={{ ...td, fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -245,7 +244,7 @@ function L3Row({ issue: i, jiraBaseUrl }: { issue: L3SupportIssue; jiraBaseUrl: 
         </span>
       </td>
       <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
-        {i.sp > 0 ? `${i.sp} SP` : '—'}
+        {i.sp > 0 ? `${i.sp} SP` : t('common.dash')}
       </td>
     </tr>
   )

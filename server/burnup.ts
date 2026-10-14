@@ -114,7 +114,7 @@ export async function fetchEpicsForSprint(
     .sort((a, b) => a.name.localeCompare(b.name))
 
   if (hasNoParent) {
-    result.push({ key: NO_PARENT_KEY, name: 'Sin épica' })
+    result.push({ key: NO_PARENT_KEY, name: NO_PARENT_KEY })
   }
 
   return result

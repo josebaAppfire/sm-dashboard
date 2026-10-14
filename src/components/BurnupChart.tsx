@@ -9,22 +9,27 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { useI18n } from '../i18n/I18nContext'
 import { type BurnupPoint, type BurnupResponse } from '../lib/types'
 
 interface Props {
   data: BurnupResponse
 }
 
-const fmt = (iso: string) =>
-  new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
-
 export default function BurnupChart({ data }: Props) {
+  const { t, dateLocale } = useI18n()
   const { series, sprint, totals } = data
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' })
+
+  const scopeKey = t('burnup.seriesScope')
+  const completedKey = t('burnup.seriesCompleted')
 
   const chartData = series.map((p: BurnupPoint) => ({
     date: fmt(p.date),
-    Alcance: p.scope,
-    Completado: p.completed,
+    [scopeKey]: p.scope,
+    [completedKey]: p.completed,
   }))
 
   const completionPct =
@@ -32,14 +37,22 @@ export default function BurnupChart({ data }: Props) {
       ? Math.round((totals.completedIncludingWfR / totals.scope) * 100)
       : 0
 
-  const isSimplified = data.dataSource === 'rest-simplified'
+  const completedPct = totals.scope > 0
+    ? Math.round((totals.completed / totals.scope) * 100)
+    : 0
+
+  const warningText =
+    data.warning ??
+    (data.dataSource === 'rest' && series.length <= 2 ? t('burnup.restWarning') : undefined)
+
+  const sourceLabel =
+    data.dataSource === 'rest' ? t('burnup.sourceRest') : t('burnup.sourceGreenhopper')
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', padding: '24px' }}>
-      {/* Header */}
       <div style={{ marginBottom: 8 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: '#111' }}>
-          Sprint Burnup
+          {t('burnup.chartTitle')}
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: 14, color: '#555' }}>
           {sprint.name} &nbsp;·&nbsp; Board {sprint.id ?? '—'}
@@ -60,8 +73,7 @@ export default function BurnupChart({ data }: Props) {
         </p>
       </div>
 
-      {/* Warning banner if using simplified fallback */}
-      {isSimplified && (
+      {warningText && (
         <div
           style={{
             background: '#fff3cd',
@@ -73,34 +85,32 @@ export default function BurnupChart({ data }: Props) {
             marginBottom: 16,
           }}
         >
-          ⚠ {data.warning}
+          ⚠ {warningText}
         </div>
       )}
 
-      {/* Stats row */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        <StatCard label="Alcance total (SP)" value={totals.scope} />
+        <StatCard label={t('burnup.totalScope')} value={totals.scope} />
         <StatCard
-          label="Completado (Done)"
+          label={t('burnup.completedDone')}
           value={totals.completed}
-          sub={`${Math.round(totals.scope > 0 ? (totals.completed / totals.scope) * 100 : 0)}% del alcance`}
+          sub={t('burnup.pctOfScope', { pct: completedPct })}
         />
         <StatCard
-          label="Done + Waiting for Release"
+          label={t('burnup.doneWfr')}
           value={totals.completedIncludingWfR}
-          sub={`${completionPct}% del alcance`}
+          sub={t('burnup.pctOfScope', { pct: completionPct })}
           accent
         />
       </div>
 
-      {/* Chart */}
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={chartData} margin={{ top: 8, right: 24, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
-            label={{ value: 'Fecha', position: 'insideBottomRight', offset: -8, fontSize: 12 }}
+            label={{ value: t('burnup.date'), position: 'insideBottomRight', offset: -8, fontSize: 12 }}
           />
           <YAxis
             tick={{ fontSize: 12 }}
@@ -108,19 +118,18 @@ export default function BurnupChart({ data }: Props) {
           />
           <Tooltip
             formatter={(val: number, name: string) => [`${val} SP`, name]}
-            labelFormatter={(l) => `Fecha: ${l}`}
+            labelFormatter={(l) => t('burnup.dateTooltip', { date: l })}
           />
           <Legend wrapperStyle={{ fontSize: 13, paddingTop: 8 }} />
-          {/* Sprint end target line */}
           <ReferenceLine
             y={totals.scope}
             stroke="#aaa"
             strokeDasharray="4 4"
-            label={{ value: 'Objetivo', position: 'right', fontSize: 11, fill: '#888' }}
+            label={{ value: t('burnup.goal'), position: 'right', fontSize: 11, fill: '#888' }}
           />
           <Line
             type="monotone"
-            dataKey="Alcance"
+            dataKey={scopeKey}
             stroke="#1a73e8"
             strokeWidth={2}
             dot={false}
@@ -128,7 +137,7 @@ export default function BurnupChart({ data }: Props) {
           />
           <Line
             type="monotone"
-            dataKey="Completado"
+            dataKey={completedKey}
             stroke="#34a853"
             strokeWidth={2.5}
             dot={false}
@@ -137,10 +146,8 @@ export default function BurnupChart({ data }: Props) {
         </LineChart>
       </ResponsiveContainer>
 
-      {/* Caption */}
       <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
-        Fuente: Jira · Sprint {sprint.name} · Entregado = Done + Waiting for Release ·
-        Datos vía {data.dataSource === 'greenhopper' ? 'GreenHopper API' : 'Jira REST API (simplificado)'}
+        {t('burnup.caption', { name: sprint.name, source: sourceLabel })}
       </p>
     </div>
   )

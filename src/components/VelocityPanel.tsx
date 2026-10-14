@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { type SprintRecord } from '../lib/types'
 import { patchSprint, saveSprint, exportToMd } from '../lib/api'
+import { useI18n } from '../i18n/I18nContext'
 import SprintFormModal from './SprintFormModal'
 
 interface Props {
@@ -29,21 +30,37 @@ function rollingAvg(sprints: SprintRecord[], idx: number, window = 3): number | 
 }
 
 export default function VelocityPanel({ sprints, onRefresh }: Props) {
+  const { t } = useI18n()
   const [showForm, setShowForm] = useState(false)
   const [editTarget, setEditTarget] = useState<SprintRecord | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
 
+  const committedKey = t('velocity.chartCommitted')
+  const deliveredKey = t('velocity.chartDelivered')
+  const rollingKey = t('velocity.chartRolling')
+
   const chartData = sprints.map((s, i) => ({
     id: s.id,
-    Comprometido: s.committed,
-    Entregado: s.delivered,
-    'Media móvil 3': rollingAvg(sprints, i),
+    [committedKey]: s.committed,
+    [deliveredKey]: s.delivered,
+    [rollingKey]: rollingAvg(sprints, i),
   }))
 
   const withDelivered = sprints.filter((s) => s.delivered != null)
   const lastRef = withDelivered[withDelivered.length - 1]
   const velocidadRef = lastRef?.delivered ?? 0
+
+  const tableHeaders = [
+    t('velocity.colSprint'),
+    t('velocity.colCommitted'),
+    t('velocity.colDelivered'),
+    t('velocity.colScope'),
+    t('velocity.colDevs'),
+    t('velocity.colDevDays'),
+    t('velocity.colContext'),
+    '',
+  ]
 
   async function handleSave(sprint: SprintRecord) {
     if (editTarget) {
@@ -61,9 +78,9 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
     setExportMsg(null)
     try {
       await exportToMd()
-      setExportMsg('velocity-history.md actualizado')
-    } catch (e) {
-      setExportMsg('Error al exportar')
+      setExportMsg(t('velocity.exportOk'))
+    } catch {
+      setExportMsg(t('velocity.exportFail'))
     } finally {
       setExporting(false)
     }
@@ -71,12 +88,11 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
 
   return (
     <div style={{ padding: '24px', maxWidth: 960, fontFamily: 'system-ui, sans-serif' }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Velocidad histórica</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('velocity.title')}</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#666' }}>
-            SP entregados = Done + Waiting for Release
+            {t('velocity.subtitle')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -85,10 +101,10 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
             disabled={exporting}
             style={btnStyle('secondary')}
           >
-            {exporting ? 'Exportando…' : 'Exportar .md'}
+            {exporting ? t('velocity.exporting') : t('velocity.exportMd')}
           </button>
           <button onClick={() => { setEditTarget(null); setShowForm(true) }} style={btnStyle('primary')}>
-            + Registrar sprint
+            {t('velocity.registerSprint')}
           </button>
         </div>
       </div>
@@ -99,22 +115,20 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
         </div>
       )}
 
-      {/* Stats */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        <StatCard label="Referencia actual" value={`${velocidadRef} SP`} sub={lastRef?.id ?? '—'} accent />
-        <StatCard label="Total sprints" value={String(sprints.length)} />
+        <StatCard label={t('velocity.refCurrent')} value={`${velocidadRef} SP`} sub={lastRef?.id ?? t('common.dash')} accent />
+        <StatCard label={t('velocity.totalSprints')} value={String(sprints.length)} />
         <StatCard
-          label="Media móvil (3 sprints)"
+          label={t('velocity.rollingAvg')}
           value={
             withDelivered.length >= 3
-              ? `${rollingAvg(sprints, sprints.length - 1) ?? '—'} SP`
-              : '—'
+              ? `${rollingAvg(sprints, sprints.length - 1) ?? t('common.dash')} SP`
+              : t('common.dash')
           }
-          sub={withDelivered.length < 3 ? 'Necesitas 3+ sprints' : undefined}
+          sub={withDelivered.length < 3 ? t('velocity.needThreeSprints') : undefined}
         />
       </div>
 
-      {/* Chart */}
       {sprints.length > 0 ? (
         <>
           <ResponsiveContainer width="100%" height={300}>
@@ -126,30 +140,29 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {velocidadRef > 0 && (
                 <ReferenceLine y={velocidadRef} stroke="#aaa" strokeDasharray="4 4"
-                  label={{ value: 'Ref', position: 'right', fontSize: 11, fill: '#888' }} />
+                  label={{ value: t('velocity.refLine'), position: 'right', fontSize: 11, fill: '#888' }} />
               )}
-              <Line type="monotone" dataKey="Comprometido" stroke="#1a73e8" strokeWidth={2} dot={{ r: 4 }} connectNulls />
-              <Line type="monotone" dataKey="Entregado" stroke="#34a853" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
-              <Line type="monotone" dataKey="Media móvil 3" stroke="#ea4335" strokeWidth={1.5} dot={false} strokeDasharray="5 3" connectNulls />
+              <Line type="monotone" dataKey={committedKey} stroke="#1a73e8" strokeWidth={2} dot={{ r: 4 }} connectNulls />
+              <Line type="monotone" dataKey={deliveredKey} stroke="#34a853" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+              <Line type="monotone" dataKey={rollingKey} stroke="#ea4335" strokeWidth={1.5} dot={false} strokeDasharray="5 3" connectNulls />
             </LineChart>
           </ResponsiveContainer>
           <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
-            Fuente: sm-dashboard/data/sprints.json · Entregado = Done + Waiting for Release
+            {t('velocity.footnote')}
           </p>
         </>
       ) : (
         <div style={{ padding: 40, textAlign: 'center', color: '#999', fontSize: 14 }}>
-          No hay sprints registrados todavía. Usa "+ Registrar sprint" para añadir el primero.
+          {t('velocity.empty')}
         </div>
       )}
 
-      {/* Table */}
       {sprints.length > 0 && (
         <div style={{ marginTop: 28, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
-                {['Sprint', 'Comprometido', 'Entregado', 'Alcance', 'Devs', 'Días-persona', 'Contexto', ''].map((h) => (
+                {tableHeaders.map((h) => (
                   <th key={h} style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -158,20 +171,20 @@ export default function VelocityPanel({ sprints, onRefresh }: Props) {
               {sprints.map((s) => (
                 <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '6px 10px', fontWeight: 600 }}>{s.id}</td>
-                  <td style={{ padding: '6px 10px' }}>{s.committed ?? '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#137333', fontWeight: 600 }}>{s.delivered ?? '—'}</td>
+                  <td style={{ padding: '6px 10px' }}>{s.committed ?? t('common.dash')}</td>
+                  <td style={{ padding: '6px 10px', color: '#137333', fontWeight: 600 }}>{s.delivered ?? t('common.dash')}</td>
                   <td style={{ padding: '6px 10px', color: s.scope && s.committed && s.scope > s.committed ? '#d97706' : undefined }}>
-                    {s.scope ?? '—'}
+                    {s.scope ?? t('common.dash')}
                   </td>
-                  <td style={{ padding: '6px 10px' }}>{s.devs ?? '—'}</td>
-                  <td style={{ padding: '6px 10px' }}>{s.devDays ?? '—'}</td>
+                  <td style={{ padding: '6px 10px' }}>{s.devs ?? t('common.dash')}</td>
+                  <td style={{ padding: '6px 10px' }}>{s.devDays ?? t('common.dash')}</td>
                   <td style={{ padding: '6px 10px', color: '#555', maxWidth: 260 }}>{s.context}</td>
                   <td style={{ padding: '6px 10px' }}>
                     <button
                       onClick={() => { setEditTarget(s); setShowForm(true) }}
                       style={{ fontSize: 12, padding: '2px 8px', border: '1px solid #d1d5db', borderRadius: 4, background: '#fff', cursor: 'pointer' }}
                     >
-                      Editar
+                      {t('common.edit')}
                     </button>
                   </td>
                 </tr>

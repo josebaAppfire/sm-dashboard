@@ -1,5 +1,6 @@
 import { type InitialIssue } from '../lib/types'
 import { jiraIssueUrl } from '../lib/teams'
+import { useI18n } from '../i18n/I18nContext'
 
 const DONE_SET = new Set(['done', 'waiting for release'])
 
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function InitialIssuesPanel({ issues, jiraBaseUrl }: Props) {
+  const { t } = useI18n()
   const totalSp = issues.reduce((s, i) => s + i.sp, 0)
   const doneSp = issues.filter((i) => DONE_SET.has(i.status.toLowerCase())).reduce((s, i) => s + i.sp, 0)
   const pct = totalSp > 0 ? Math.round((doneSp / totalSp) * 100) : 0
@@ -41,7 +43,6 @@ export default function InitialIssuesPanel({ issues, jiraBaseUrl }: Props) {
       fontFamily: 'system-ui, sans-serif',
       background: '#fff',
     }}>
-      {/* Header */}
       <div style={{
         padding: '12px 16px',
         background: '#f8fafc',
@@ -49,12 +50,11 @@ export default function InitialIssuesPanel({ issues, jiraBaseUrl }: Props) {
         flexShrink: 0,
       }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 8 }}>
-          Issues de planificación inicial
+          {t('initialIssues.title')}
           <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 12 }}>
-            ({issues.length} issues · {totalSp} SP)
+            {t('initialIssues.issueCount', { count: issues.length, sp: totalSp })}
           </span>
         </div>
-        {/* Mini progress bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             flex: 1, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden',
@@ -71,20 +71,19 @@ export default function InitialIssuesPanel({ issues, jiraBaseUrl }: Props) {
         </div>
       </div>
 
-      {/* Scrollable table */}
       <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {issues.length === 0 ? (
           <div style={{ padding: '16px', fontSize: 13, color: '#9ca3af' }}>
-            Sin datos — el scope del sprint aún no ha cargado.
+            {t('initialIssues.empty')}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Issue</th>
-                <th style={th}>Resumen</th>
-                <th style={{ ...th, textAlign: 'right' }}>SP</th>
-                <th style={{ ...th, textAlign: 'center' }}>Estado</th>
+                <th style={th}>{t('initialIssues.colIssue')}</th>
+                <th style={th}>{t('initialIssues.colSummary')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('common.sp')}</th>
+                <th style={{ ...th, textAlign: 'center' }}>{t('initialIssues.colStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +110,7 @@ export default function InitialIssuesPanel({ issues, jiraBaseUrl }: Props) {
                     </span>
                   </td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
-                    {issue.sp > 0 ? `${issue.sp}` : '—'}
+                    {issue.sp > 0 ? `${issue.sp}` : t('common.dash')}
                   </td>
                   <td style={{ ...td, textAlign: 'center' }}>
                     <span style={statusStyle(issue.status)}>{issue.status}</span>
