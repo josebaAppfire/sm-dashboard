@@ -100,6 +100,44 @@ export interface JiraSprintOption {
   endDate?: string
 }
 
+// ---- Cycle time ----
+
+export interface CycleTimeIssue {
+  key: string
+  summary: string
+  issueType: string
+  sp: number | null
+  startedAt: string       // ISO — first move into an "In Progress" category status
+  completedAt: string     // ISO — final entry into Done / Waiting for Release
+  cycleDays: number       // calendar days, 1 decimal
+  sprintId: number | null // sprint whose date range contains completedAt
+}
+
+export interface CycleTimeStats {
+  count: number
+  p50: number
+  p85: number
+  avg: number
+  max: number
+}
+
+export interface CycleTimeSprintSummary {
+  id: number
+  name: string
+  startDate?: string
+  endDate?: string
+  stats: CycleTimeStats | null
+}
+
+export interface CycleTimeResponse {
+  from: string            // YYYY-MM-DD, inclusive
+  to: string              // YYYY-MM-DD, inclusive
+  sprints: CycleTimeSprintSummary[]  // team sprints overlapping [from, to]
+  issues: CycleTimeIssue[]
+  stats: CycleTimeStats | null
+  skippedNoStart: number  // delivered issues that never went through an "In Progress" status
+}
+
 // ---- Burnup types ----
 
 // Types shared between server and client via the /api/burnup response shape.

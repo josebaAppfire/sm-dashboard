@@ -1,4 +1,4 @@
-import { type BurnupResponse } from './types'
+import { type BurnupResponse, type CycleTimeResponse } from './types'
 import { type AppConfig } from './teams'
 
 export async function fetchAppConfig(): Promise<AppConfig> {
@@ -7,17 +7,30 @@ export async function fetchAppConfig(): Promise<AppConfig> {
   return res.json()
 }
 
-export async function fetchBurnup(
-  boardId?: number,
-  sprintId?: number,
-  epicKeys?: string[]
-): Promise<BurnupResponse> {
+export async function fetchBurnup(sprintId?: number, epicKeys?: string[]): Promise<BurnupResponse> {
   const params = new URLSearchParams()
-  if (boardId != null) params.set('boardId', String(boardId))
   if (sprintId != null) params.set('sprintId', String(sprintId))
   if (epicKeys && epicKeys.length > 0) params.set('epicKeys', epicKeys.join(','))
 
-  const url = '/api/burnup' + (params.size > 0 ? '?' + params.toString() : '')
+  const res = await fetch('/api/burnup' + (params.size > 0 ? '?' + params.toString() : ''))
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error ?? `Server returned ${res.status}`)
+  }
+  return res.json() as Promise<BurnupResponse>
+}
+
+export async function fetchCycleTime(
+  from: string,
+  to: string,
+  team?: string,
+  epicKeys?: string[]
+): Promise<CycleTimeResponse> {
+  const params = new URLSearchParams({ from, to })
+  if (team) params.set('team', team)
+  if (epicKeys && epicKeys.length > 0) params.set('epicKeys', epicKeys.join(','))
+
+  const url = '/api/cycle-time?' + params.toString()
   const res = await fetch(url)
 
   if (!res.ok) {
@@ -27,7 +40,7 @@ export async function fetchBurnup(
     )
   }
 
-  return res.json() as Promise<BurnupResponse>
+  return res.json() as Promise<CycleTimeResponse>
 }
 
 // -----------------------------------------------------------------------

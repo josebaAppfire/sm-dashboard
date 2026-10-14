@@ -14,7 +14,7 @@ import {
 // Shared helpers
 // -----------------------------------------------------------------------
 
-interface ChangelogItem {
+export interface ChangelogItem {
   field: string
   from?: string | null
   to?: string | null
@@ -22,15 +22,15 @@ interface ChangelogItem {
   toString?: string | null
 }
 
-interface ChangelogHistory {
+export interface ChangelogHistory {
   created: string
   items: ChangelogItem[]
 }
 
-interface JiraIssue {
+export interface JiraIssue {
   key: string
   fields?: Record<string, unknown>
-  changelog?: { histories: ChangelogHistory[] }
+  changelog?: { histories: ChangelogHistory[]; total?: number }
 }
 
 interface JiraSearchResponse {
@@ -39,7 +39,7 @@ interface JiraSearchResponse {
   isLast: boolean
 }
 
-async function paginateJql(
+export async function paginateJql(
   config: Config,
   jql: string,
   fields: string[],
@@ -120,7 +120,7 @@ export async function fetchEpicsForSprint(
   return result
 }
 
-function buildEpicFilter(epicKeys?: string[]): string {
+export function buildEpicFilter(epicKeys?: string[]): string {
   if (!epicKeys || epicKeys.length === 0) return ''
 
   const realKeys = epicKeys.filter((k) => k !== NO_PARENT_KEY)

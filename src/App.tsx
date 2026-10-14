@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import BurnupChart from './components/BurnupChart'
+import CycleTimeChart from './components/CycleTimeChart'
+import SprintTotals from './components/SprintTotals'
+import { type DateRange, toIsoDate } from './components/DateRangePicker'
 import VelocityPanel from './components/VelocityPanel'
 import PlanningCalculator from './components/PlanningCalculator'
 import ScopeChangesPanel from './components/ScopeChangesPanel'
 import InitialIssuesPanel from './components/InitialIssuesPanel'
 import LanguageSelector from './components/LanguageSelector'
-import { fetchAppConfig, fetchBurnup, fetchSprints, fetchJiraSprints, fetchEpics, fetchScopeChanges } from './lib/api'
+import { fetchAppConfig, fetchBurnup, fetchCycleTime, fetchSprints, fetchJiraSprints, fetchEpics, fetchScopeChanges } from './lib/api'
 import { type AppConfig } from './lib/teams'
 import { epicDisplayName, useI18n } from './i18n/I18nContext'
-import { type BurnupResponse, type SprintRecord, type JiraSprintOption, type EpicOption, type ScopeChangesResponse } from './lib/types'
+import { type BurnupResponse, type CycleTimeResponse, type SprintRecord, type JiraSprintOption, type EpicOption, type ScopeChangesResponse } from './lib/types'
 
 type Tab = 'burnup' | 'velocity' | 'planning'
 
-type BurnupState =
+function defaultCycleRange(): DateRange {
+  const to = new Date()
+  const from = new Date(to.getFullYear(), to.getMonth() - 3, to.getDate())
+  return { from: toIsoDate(from), to: toIsoDate(to) }
+}
+
+type CycleTimeState =
   | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'ok'; data: BurnupResponse }
+  | { status: 'loading'; previous?: CycleTimeResponse }
+  | { status: 'ok'; data: CycleTimeResponse }
   | { status: 'error'; message: string }
 
 type SprintsState =
@@ -51,7 +59,11 @@ export default function App() {
   ]
 
   const [tab, setTab] = useState<Tab>('velocity')
-  const [burnup, setBurnup] = useState<BurnupState>({ status: 'idle' })
+  const [cycleTime, setCycleTime] = useState<CycleTimeState>({ status: 'idle' })
+  const [cycleRange, setCycleRange] = useState<DateRange>(defaultCycleRange)
+  const cycleRequestRef = useRef(0)
+  const [sprintTotals, setSprintTotals] = useState<BurnupResponse['totals'] | null>(null)
+  const totalsRequestRef = useRef(0)
   const [sprintsState, setSprintsState] = useState<SprintsState>({ status: 'idle' })
   const [jiraSprintsState, setJiraSprintsState] = useState<JiraSprintsState>({ status: 'idle' })
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
@@ -63,15 +75,37 @@ export default function App() {
   const burnupLeftRef = useRef<HTMLDivElement>(null)
   const [burnupBlockHeight, setBurnupBlockHeight] = useState<number | undefined>(undefined)
 
-  const loadBurnup = useCallback(async (sprintId?: number, epicKeys?: string[]) => {
-    setBurnup({ status: 'loading' })
+  async function loadCycleTime(epicKeys?: string[], range = cycleRange) {
+    const requestId = ++cycleRequestRef.current
+    setCycleTime((prev) => ({
+      status: 'loading',
+      previous: prev.status === 'ok' ? prev.data : prev.status === 'loading' ? prev.previous : undefined,
+    }))
     try {
-      const data = await fetchBurnup(undefined, sprintId, epicKeys)
-      setBurnup({ status: 'ok', data })
+      const data = await fetchCycleTime(range.from, range.to, selectedTeam || undefined, epicKeys)
+      if (requestId === cycleRequestRef.current) setCycleTime({ status: 'ok', data })
     } catch (err) {
-      setBurnup({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+      if (requestId === cycleRequestRef.current) {
+        setCycleTime({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+      }
     }
-  }, [])
+  }
+
+  async function loadSprintTotals(sprintId: number | undefined, epicKeys: string[]) {
+    const requestId = ++totalsRequestRef.current
+    setSprintTotals(null)
+    try {
+      const data = await fetchBurnup(sprintId, epicKeys)
+      if (requestId === totalsRequestRef.current) setSprintTotals(data.totals)
+    } catch {
+      // Cards stay empty; the sprint panels below surface Jira errors.
+    }
+  }
+
+  function handleCycleRangeChange(range: DateRange) {
+    setCycleRange(range)
+    loadCycleTime(selectedEpicKeys.size > 0 ? [...selectedEpicKeys] : [], range)
+  }
 
   const loadSprints = useCallback(async () => {
     setSprintsState({ status: 'loading' })
@@ -118,7 +152,6 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => { loadBurnup() }, [loadBurnup])
   useEffect(() => { loadSprints() }, [loadSprints])
   useEffect(() => {
     fetchAppConfig()
@@ -131,15 +164,17 @@ export default function App() {
   useEffect(() => {
     if (appConfig === null) return
     void loadJiraSprintsForTeam(selectedTeam, false)
-  }, [appConfig, selectedTeam, loadJiraSprintsForTeam])
+    loadCycleTime([])
+  }, [appConfig, selectedTeam, loadJiraSprintsForTeam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const teams = appConfig?.teams ?? []
   const jiraBaseUrl = appConfig?.jiraBaseUrl ?? ''
 
   useEffect(() => {
     if (selectedSprintId !== null) {
+      if (selectedEpicKeys.size > 0) loadCycleTime([])
       setSelectedEpicKeys(new Set())
-      loadBurnup(selectedSprintId, [])
+      loadSprintTotals(selectedSprintId, [])
       loadEpics(selectedSprintId)
       loadScopeChanges(selectedSprintId)
     }
@@ -147,7 +182,8 @@ export default function App() {
 
   useEffect(() => {
     const el = burnupLeftRef.current
-    if (!el || tab !== 'burnup' || burnup.status !== 'ok') {
+    const hasChart = cycleTime.status === 'ok' || (cycleTime.status === 'loading' && !!cycleTime.previous)
+    if (!el || tab !== 'burnup' || !hasChart) {
       setBurnupBlockHeight(undefined)
       return
     }
@@ -156,7 +192,7 @@ export default function App() {
     const ro = new ResizeObserver(sync)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [tab, burnup])
+  }, [tab, cycleTime])
 
   const sprints = sprintsState.status === 'ok' ? sprintsState.data : []
   const jiraSprints = jiraSprintsState.status === 'ok' ? jiraSprintsState.data : []
@@ -170,27 +206,25 @@ export default function App() {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
-      loadBurnup(
-        selectedSprintId ?? undefined,
-        next.size > 0 ? [...next] : []
-      )
+      loadCycleTime(next.size > 0 ? [...next] : [])
+      loadSprintTotals(selectedSprintId ?? undefined, [...next])
       return next
     })
   }
 
   function handleClearEpicFilter() {
     setSelectedEpicKeys(new Set())
-    loadBurnup(selectedSprintId ?? undefined, [])
+    loadCycleTime([])
+    loadSprintTotals(selectedSprintId ?? undefined, [])
   }
 
   function handleApplyEpicFilter() {
     void loadJiraSprintsForTeam(selectedTeam, true)
+    loadCycleTime(selectedEpicKeys.size > 0 ? [...selectedEpicKeys] : [])
+    loadSprintTotals(selectedSprintId ?? undefined, [...selectedEpicKeys])
     if (selectedSprintId !== null) {
-      loadBurnup(selectedSprintId, selectedEpicKeys.size > 0 ? [...selectedEpicKeys] : [])
       loadEpics(selectedSprintId)
       loadScopeChanges(selectedSprintId)
-    } else {
-      loadBurnup(undefined, [])
     }
   }
 
@@ -262,10 +296,10 @@ export default function App() {
               </select>
               <button
                 onClick={handleApplyEpicFilter}
-                disabled={burnup.status === 'loading'}
+                disabled={cycleTime.status === 'loading'}
                 style={selectStyle}
               >
-                {burnup.status === 'loading' ? t('common.loading') : t('common.refresh')}
+                {cycleTime.status === 'loading' ? t('common.loading') : t('common.refresh')}
               </button>
             </>
           )}
@@ -315,9 +349,18 @@ export default function App() {
               marginBottom: 16,
             }}>
               <div ref={burnupLeftRef} style={{ flex: '1 1 0', minWidth: 0 }}>
-                {burnup.status === 'loading' && <LoadingMsg text={t('burnup.loadingJira')} />}
-                {burnup.status === 'error' && <ErrorMsg message={burnup.message} />}
-                {burnup.status === 'ok' && <BurnupChart data={burnup.data} />}
+                {cycleTime.status === 'loading' && !cycleTime.previous && <LoadingMsg text={t('burnup.loadingJira')} />}
+                {cycleTime.status === 'error' && <ErrorMsg message={cycleTime.message} />}
+                {(cycleTime.status === 'ok' || (cycleTime.status === 'loading' && cycleTime.previous)) && (
+                  <div style={{ opacity: cycleTime.status === 'loading' ? 0.5 : 1, transition: 'opacity 0.15s' }}>
+                    <CycleTimeChart
+                      data={cycleTime.status === 'ok' ? cycleTime.data : cycleTime.previous!}
+                      jiraBaseUrl={jiraBaseUrl}
+                      range={cycleRange}
+                      onRangeChange={handleCycleRangeChange}
+                    />
+                  </div>
+                )}
               </div>
               <div style={{
                 flex: '1 1 0',
@@ -330,8 +373,13 @@ export default function App() {
                 minHeight: 0,
                 overflow: 'hidden',
               }}>
+                <SprintTotals totals={sprintTotals} />
                 {scopeState.status === 'ok'
-                  ? <InitialIssuesPanel issues={scopeState.data.initialIssues} jiraBaseUrl={jiraBaseUrl} />
+                  ? (
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <InitialIssuesPanel issues={scopeState.data.initialIssues} jiraBaseUrl={jiraBaseUrl} />
+                    </div>
+                  )
                   : (
                     <div style={{
                       flex: 1,

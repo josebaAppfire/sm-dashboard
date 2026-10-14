@@ -3,8 +3,9 @@ import express from 'express'
 import { writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getConfig, jiraFetch } from './jira-client.js'
+import { fetchBoardSprints, getConfig } from './jira-client.js'
 import { fetchBurnup, fetchEpicsForSprint, fetchScopeChanges } from './burnup.js'
+import { fetchCycleTime } from './cycle-time.js'
 import {
   getAllSprints,
   addSprint,
@@ -71,6 +72,50 @@ app.get('/api/burnup', async (req, res) => {
   }
 })
 
+// GET /api/cycle-time?team=TeamA&from=2026-07-01&to=2026-09-30&epicKeys=PROJ-10
+app.get('/api/cycle-time', async (req, res) => {
+  let config
+  try {
+    config = getConfig()
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    res.status(503).json({ error: message })
+    return
+  }
+
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+  const from = String(req.query.from ?? '')
+  const to = String(req.query.to ?? '')
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || from > to) {
+    res.status(400).json({ error: 'from and to are required (YYYY-MM-DD, from <= to)' })
+    return
+  }
+
+  const teamRaw = req.query.team ? String(req.query.team).trim() : undefined
+  const team = teamRaw ? findBurnupTeam(teamRaw) : undefined
+  const boardId = team ? team.boardId : config.boardId
+  const epicKeys = req.query.epicKeys
+    ? String(req.query.epicKeys).split(',').map((k) => k.trim()).filter(Boolean)
+    : undefined
+
+  const cacheKey = `cycle:${boardId}:${team?.id ?? ''}:${from}:${to}:${(epicKeys ?? []).join(',')}`
+  const cached = burnupCache.get(cacheKey)
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    res.json(cached.data)
+    return
+  }
+
+  try {
+    const data = await fetchCycleTime(config, { boardId, teamId: team?.id, from, to, epicKeys })
+    burnupCache.set(cacheKey, { ts: Date.now(), data })
+    res.json(data)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[/api/cycle-time]', message)
+    res.status(500).json({ error: message })
+  }
+})
+
 app.post('/api/cache/clear', (_req, res) => {
   burnupCache.clear()
   res.json({ ok: true })
@@ -126,18 +171,6 @@ app.get('/api/scope-changes', async (req, res) => {
 // Jira sprint list (for sprint selector)
 // -----------------------------------------------------------------------
 
-interface JiraSprintPage {
-  values: Array<{
-    id: number
-    name: string
-    state: string
-    startDate?: string
-    endDate?: string
-  }>
-  isLast: boolean
-  nextPage?: string
-}
-
 app.get('/api/jira-sprints', async (req, res) => {
   let config
   try {
@@ -161,25 +194,7 @@ app.get('/api/jira-sprints', async (req, res) => {
     : (Number.isFinite(limitRaw) && limitRaw! > 0 ? limitRaw! : 20)
 
   try {
-    const allSprints: JiraSprintPage['values'] = []
-    let startAt = 0
-    let isLast = false
-
-    while (!isLast) {
-      const r = await jiraFetch(config, `/rest/agile/1.0/board/${boardId}/sprint`, {
-        state: 'active,closed',
-        maxResults: 50,
-        startAt,
-      })
-      if (!r.ok) {
-        res.status(r.status).json({ error: `Jira returned ${r.status}` })
-        return
-      }
-      const page = (await r.json()) as JiraSprintPage
-      allSprints.push(...page.values)
-      isLast = page.isLast
-      startAt += page.values.length
-    }
+    const allSprints = await fetchBoardSprints(config, boardId)
 
     let sorted = allSprints.sort((a, b) => b.id - a.id)
     if (team) {

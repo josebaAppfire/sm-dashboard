@@ -42,3 +42,31 @@ export function jiraFetch(
     },
   })
 }
+
+export interface BoardSprint {
+  id: number
+  name: string
+  state: string
+  startDate?: string
+  endDate?: string
+}
+
+/** All active and closed sprints of a board. */
+export async function fetchBoardSprints(config: Config, boardId: number): Promise<BoardSprint[]> {
+  const all: BoardSprint[] = []
+  let startAt = 0
+  let isLast = false
+  while (!isLast) {
+    const r = await jiraFetch(config, `/rest/agile/1.0/board/${boardId}/sprint`, {
+      state: 'active,closed',
+      maxResults: 50,
+      startAt,
+    })
+    if (!r.ok) throw new Error(`Jira returned ${r.status}`)
+    const page = (await r.json()) as { values: BoardSprint[]; isLast: boolean }
+    all.push(...page.values)
+    isLast = page.isLast || page.values.length === 0
+    startAt += page.values.length
+  }
+  return all
+}
