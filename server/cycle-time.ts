@@ -10,6 +10,10 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const DELIVERED_LC = new Set(['done', 'waiting for release'])
+/** Jira's sprint custom field. Issues are attributed to a sprint only when they belong to it. */
+const SPRINT_FIELD = 'customfield_10019'
+/** "Appfire Team" select field — how Jellyfish assigns issues to a team. */
+const TEAM_FIELD = 'cf[10543]'
 const CHANGELOG_CONCURRENCY = 8
 const BOARD_SPRINTS_TTL_MS = 10 * 60_000
 
@@ -80,28 +84,59 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx]
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10
+/** Classic median: average of the two central values when the count is even. */
+function median(sorted: number[]): number {
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/**
+ * Round half to even, on the decimal representation. Jellyfish shows 1.08 for a
+ * median of 1.085, which is what this rule (and Python's) produces.
+ */
+function round2(n: number): number {
+  const negative = n < 0
+  const [intRaw, fracRaw = ''] = Math.abs(n).toFixed(8).split('.')
+  const frac = fracRaw.padEnd(8, '0')
+  let hundredths = Number(intRaw) * 100 + Number(frac.slice(0, 2))
+  const next = frac[2]
+  const remainder = /[1-9]/.test(frac.slice(3))
+  if (next > '5' || (next === '5' && (remainder || hundredths % 2 === 1))) hundredths += 1
+  return (negative ? -hundredths : hundredths) / 100
+}
 
 function computeStats(values: number[]): CycleTimeStats | null {
   if (values.length === 0) return null
   const sorted = [...values].sort((a, b) => a - b)
   return {
     count: sorted.length,
-    p50: round1(percentile(sorted, 0.5)),
-    p85: round1(percentile(sorted, 0.85)),
-    avg: round1(sorted.reduce((s, v) => s + v, 0) / sorted.length),
-    max: round1(sorted[sorted.length - 1]),
+    p50: round2(median(sorted)),
+    p85: round2(percentile(sorted, 0.85)),
+    avg: round2(sorted.reduce((s, v) => s + v, 0) / sorted.length),
+    max: round2(sorted[sorted.length - 1]),
   }
 }
 
+interface CycleMeasure {
+  /** Sum of time spent in "In Progress" category statuses. Null if it never entered one. */
+  activeMs: number | null
+  /** First "In Progress" entry until final delivery. Null when there is no start or delivery. */
+  elapsedMs: number | null
+  startMs: number | null
+  endMs: number | null
+}
+
 /**
- * Start = first transition into an "In Progress" category status.
- * End = entry into Done / Waiting for Release that was never followed by a reopen.
+ * Active time (Jellyfish cycle time) sums every interval spent in an
+ * "In Progress" category status; waits in Triage / Waiting Response and
+ * intermediate Done periods don't count. Elapsed time runs from the first
+ * "In Progress" entry to the final delivery (Done / Waiting for Release),
+ * reopening included.
  */
-function cycleBounds(
+function measureCycle(
   histories: ChangelogHistory[],
   categories: Map<string, string>
-): { startMs: number | null; endMs: number | null } {
+): CycleMeasure {
   const transitions = histories
     .flatMap((h) =>
       h.items
@@ -115,11 +150,20 @@ function cycleBounds(
     )
     .sort((a, b) => a.at - b.at)
 
+  let activeMs = 0
+  let since: number | null = null
   let startMs: number | null = null
   let endMs: number | null = null
+  let sawActive = false
   for (const t of transitions) {
-    if (startMs === null && categories.get(t.toId) === 'indeterminate' && !DELIVERED_LC.has(t.toName)) {
-      startMs = t.at
+    if (since !== null) {
+      activeMs += t.at - since
+      since = null
+    }
+    if (categories.get(t.toId) === 'indeterminate') {
+      since = t.at
+      sawActive = true
+      if (startMs === null) startMs = t.at
     }
     const fromDelivered = DELIVERED_LC.has(t.fromName)
     const toDelivered = DELIVERED_LC.has(t.toName)
@@ -127,18 +171,35 @@ function cycleBounds(
     else if (!toDelivered && fromDelivered) endMs = null
   }
 
-  return { startMs, endMs }
+  return {
+    activeMs: sawActive ? activeMs : null,
+    elapsedMs: startMs !== null && endMs !== null && endMs >= startMs ? endMs - startMs : null,
+    startMs,
+    endMs,
+  }
+}
+
+/** Sprint ids the issue is assigned to (Jira sprint field). */
+function issueSprintIds(issue: JiraIssue): Set<number> {
+  const raw = issue.fields?.[SPRINT_FIELD]
+  if (!Array.isArray(raw)) return new Set()
+  return new Set(
+    raw.map((s) => (s as { id?: unknown })?.id).filter((id): id is number => typeof id === 'number')
+  )
 }
 
 // -----------------------------------------------------------------------
-// Cycle time (calendar days) for the team's issues delivered between `from`
-// and `to` (inclusive, YYYY-MM-DD). The team scope is the set of team sprints
-// overlapping that range. L3 Support included.
+// Cycle time for the team's issues delivered between `from` and `to`
+// (inclusive, YYYY-MM-DD), matching Jellyfish:
+//   - team from the "Appfire Team" field, epics excluded, L3 Support included
+//   - cycle time = calendar days spent in "In Progress" category statuses
+// The team's sprints overlapping the range are returned as a breakdown;
+// issues without a sprint get their own row.
 // -----------------------------------------------------------------------
 
 export interface CycleTimeQuery {
   boardId: number
-  teamId?: string
+  teamId: string
   from: string
   to: string
   epicKeys?: string[]
@@ -157,27 +218,25 @@ export async function fetchCycleTime(
     .filter((s) => new Date(s.startDate!).getTime() < windowEnd && new Date(s.endDate!).getTime() >= windowStart)
     .sort((a, b) => new Date(a.startDate!).getTime() - new Date(b.startDate!).getTime())
 
-  if (sprints.length === 0) {
-    return { from, to, sprints: [], issues: [], stats: null, skippedNoStart: 0 }
-  }
-
-  // History clauses ("status changed ... during") make Jira search several times slower;
-  // the completion-date filter is applied below from the changelog instead.
+  // "updated >= from" only narrows the search: an issue delivered inside the
+  // window was updated inside it. The exact delivery date is checked below.
   const [categories, issues] = await Promise.all([
     fetchStatusCategories(config),
     paginateJql(
       config,
-      `sprint in (${sprints.map((s) => s.id).join(',')}) AND status in (Done, "Waiting for Release") ${buildEpicFilter(epicKeys)}`,
-      ['summary', 'issuetype', config.estimateField],
+      `${TEAM_FIELD} = "${teamId}" AND issuetype != Epic AND status in (Done, "Waiting for Release") AND updated >= "${from}" ${buildEpicFilter(epicKeys)}`,
+      ['summary', 'issuetype', config.estimateField, SPRINT_FIELD],
       'changelog'
     ),
   ])
   const histories = await mapWithConcurrency(issues, CHANGELOG_CONCURRENCY, (i) => fullChangelog(config, i))
 
-  const sprintForCompletion = (ms: number): number | null => {
+  /** Latest-starting team sprint the issue belongs to that had already started at delivery. */
+  const sprintForIssue = (issue: JiraIssue, endMs: number): number | null => {
+    const ids = issueSprintIds(issue)
     let match: number | null = null
     for (const s of sprints) {
-      if (new Date(s.startDate!).getTime() <= ms) match = s.id
+      if (ids.has(s.id) && new Date(s.startDate!).getTime() <= endMs) match = s.id
     }
     return match
   }
@@ -186,13 +245,12 @@ export async function fetchCycleTime(
   let skippedNoStart = 0
 
   issues.forEach((issue, idx) => {
-    const { startMs, endMs } = cycleBounds(histories[idx], categories)
-    if (endMs === null || endMs < windowStart || endMs >= windowEnd) return
-    if (startMs === null || startMs > endMs) {
+    const measure = measureCycle(histories[idx], categories)
+    if (measure.endMs === null || measure.endMs < windowStart || measure.endMs >= windowEnd) return
+    if (measure.activeMs === null || measure.startMs === null) {
       skippedNoStart++
       return
     }
-    const bounds = { startMs, endMs }
 
     const sp = issue.fields?.[config.estimateField]
     result.push({
@@ -200,29 +258,40 @@ export async function fetchCycleTime(
       summary: typeof issue.fields?.['summary'] === 'string' ? issue.fields['summary'] : issue.key,
       issueType: (issue.fields?.['issuetype'] as { name?: string } | undefined)?.name ?? '',
       sp: typeof sp === 'number' ? sp : null,
-      startedAt: new Date(bounds.startMs).toISOString(),
-      completedAt: new Date(bounds.endMs).toISOString(),
-      cycleDays: round1((bounds.endMs - bounds.startMs) / DAY_MS),
-      sprintId: sprintForCompletion(bounds.endMs),
+      startedAt: new Date(measure.startMs).toISOString(),
+      completedAt: new Date(measure.endMs).toISOString(),
+      cycleDays: round2(measure.activeMs / DAY_MS),
+      elapsedDays: round2((measure.elapsedMs ?? measure.activeMs) / DAY_MS),
+      sprintId: sprintForIssue(issue, measure.endMs),
     })
   })
 
   result.sort((a, b) => a.completedAt.localeCompare(b.completedAt))
+
+  const summaryFor = (group: CycleTimeIssue[]): Pick<CycleTimeSprintSummary, 'stats' | 'elapsed'> => ({
+    stats: computeStats(group.map((i) => i.cycleDays)),
+    elapsed: computeStats(group.map((i) => i.elapsedDays)),
+  })
 
   const sprintSummaries: CycleTimeSprintSummary[] = sprints.map((s) => ({
     id: s.id,
     name: s.name,
     startDate: s.startDate,
     endDate: s.endDate,
-    stats: computeStats(result.filter((i) => i.sprintId === s.id).map((i) => i.cycleDays)),
+    ...summaryFor(result.filter((i) => i.sprintId === s.id)),
   }))
+
+  const noSprint = result.filter((i) => i.sprintId === null)
+  if (noSprint.length > 0) {
+    sprintSummaries.push({ id: null, name: '', ...summaryFor(noSprint) })
+  }
 
   return {
     from,
     to,
     sprints: sprintSummaries,
     issues: result,
-    stats: computeStats(result.map((i) => i.cycleDays)),
+    ...summaryFor(result),
     skippedNoStart,
   }
 }

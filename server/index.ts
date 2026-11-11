@@ -93,7 +93,11 @@ app.get('/api/cycle-time', async (req, res) => {
 
   const teamRaw = req.query.team ? String(req.query.team).trim() : undefined
   const team = teamRaw ? findBurnupTeam(teamRaw) : undefined
-  const boardId = team ? team.boardId : config.boardId
+  if (!team) {
+    res.status(400).json({ error: 'team is required and must match a team in BURNUP_TEAMS' })
+    return
+  }
+  const boardId = team.boardId
   const epicKeys = req.query.epicKeys
     ? String(req.query.epicKeys).split(',').map((k) => k.trim()).filter(Boolean)
     : undefined
@@ -106,7 +110,7 @@ app.get('/api/cycle-time', async (req, res) => {
   }
 
   try {
-    const data = await fetchCycleTime(config, { boardId, teamId: team?.id, from, to, epicKeys })
+    const data = await fetchCycleTime(config, { boardId, teamId: team.id, from, to, epicKeys })
     burnupCache.set(cacheKey, { ts: Date.now(), data })
     res.json(data)
   } catch (err: unknown) {

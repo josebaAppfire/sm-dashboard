@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   CartesianGrid,
   Legend,
@@ -26,7 +27,8 @@ interface Point extends CycleTimeIssue {
 
 export default function CycleTimeChart({ data, jiraBaseUrl, range, onRangeChange }: Props) {
   const { t, dateLocale } = useI18n()
-  const { stats, sprints, issues } = data
+  const { stats, elapsed, sprints, issues } = data
+  const [compare, setCompare] = useState(false)
 
   const fmt = (ms: number | string) =>
     new Date(ms).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' })
@@ -38,7 +40,10 @@ export default function CycleTimeChart({ data, jiraBaseUrl, range, onRangeChange
   const withinP85 = points.filter((p) => p.cycleDays <= p85)
   const aboveP85 = points.filter((p) => p.cycleDays > p85)
 
-  const sprintName = (id: number | null) => sprints.find((s) => s.id === id)?.name ?? t('common.dash')
+  const sprintName = (id: number | null) =>
+    id === null
+      ? t('cycleTime.noSprint')
+      : sprints.find((s) => s.id === id)?.name ?? t('common.dash')
 
   const openIssue = (p: Point) => {
     if (jiraBaseUrl) window.open(`${jiraBaseUrl}/browse/${p.key}`, '_blank', 'noopener')
@@ -64,6 +69,34 @@ export default function CycleTimeChart({ data, jiraBaseUrl, range, onRangeChange
         <StatCard label={t('cycleTime.p85')} value={stats?.p85} unit={t('cycleTime.days')} sub={t('cycleTime.p85Hint')} />
         <StatCard label={t('cycleTime.avg')} value={stats?.avg} unit={t('cycleTime.days')} />
       </div>
+
+      <div style={{ margin: '-8px 0 16px' }}>
+        <button
+          type="button"
+          onClick={() => setCompare((v) => !v)}
+          aria-pressed={compare}
+          style={{
+            fontSize: 12, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+            border: compare ? '1px solid #1a73e8' : '1px solid #d1d5db',
+            background: compare ? '#e8f0fe' : '#fff',
+            color: compare ? '#1a73e8' : '#374151',
+            fontWeight: compare ? 600 : 400,
+          }}
+        >
+          {compare ? t('cycleTime.compareHide') : t('cycleTime.compareShow')}
+        </button>
+      </div>
+
+      {compare && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>{t('cycleTime.elapsedTitle')}</div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <StatCard label={t('cycleTime.elapsedMedian')} value={elapsed?.p50} unit={t('cycleTime.days')} sub={t('cycleTime.elapsedHint')} />
+            <StatCard label={t('cycleTime.elapsedP85')} value={elapsed?.p85} unit={t('cycleTime.days')} />
+            <StatCard label={t('cycleTime.elapsedAvg')} value={elapsed?.avg} unit={t('cycleTime.days')} />
+          </div>
+        </div>
+      )}
 
       {points.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center', color: '#888', fontSize: 14 }}>
@@ -100,6 +133,7 @@ export default function CycleTimeChart({ data, jiraBaseUrl, range, onRangeChange
                     <div style={{ fontWeight: 600 }}>{p.key} · {p.issueType}</div>
                     <div style={{ color: '#555', margin: '2px 0 6px' }}>{p.summary}</div>
                     <div>{t('cycleTime.tooltipDays', { days: p.cycleDays })}</div>
+                    {compare && <div>{t('cycleTime.tooltipElapsed', { days: p.elapsedDays })}</div>}
                     <div style={{ color: '#666' }}>{fmt(p.startedAt)} → {fmt(p.completedAt)}</div>
                     <div style={{ color: '#666' }}>{sprintName(p.sprintId)}{p.sp != null ? ` · ${p.sp} SP` : ''}</div>
                   </div>
@@ -149,19 +183,21 @@ export default function CycleTimeChart({ data, jiraBaseUrl, range, onRangeChange
               <th style={cellStyle}>{t('cycleTime.colDates')}</th>
               <th style={cellStyle}>{t('cycleTime.colIssues')}</th>
               <th style={cellStyle}>{t('cycleTime.colMedian')}</th>
+              {compare && <th style={cellStyle}>{t('cycleTime.colElapsedMedian')}</th>}
               <th style={cellStyle}>P85</th>
               <th style={cellStyle}>{t('cycleTime.colMax')}</th>
             </tr>
           </thead>
           <tbody>
             {sprints.map((s) => (
-              <tr key={s.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                <td style={cellStyle}>{s.name}</td>
+              <tr key={s.id ?? 'none'} style={{ borderTop: '1px solid #f3f4f6' }}>
+                <td style={cellStyle}>{s.id === null ? t('cycleTime.noSprint') : s.name}</td>
                 <td style={{ ...cellStyle, color: '#6b7280', whiteSpace: 'nowrap' }}>
                   {s.startDate && s.endDate ? `${fmt(s.startDate)} → ${fmt(s.endDate)}` : t('common.dash')}
                 </td>
                 <td style={cellStyle}>{s.stats?.count ?? 0}</td>
                 <td style={cellStyle}>{s.stats?.p50 ?? t('common.dash')}</td>
+                {compare && <td style={cellStyle}>{s.elapsed?.p50 ?? t('common.dash')}</td>}
                 <td style={cellStyle}>{s.stats?.p85 ?? t('common.dash')}</td>
                 <td style={cellStyle}>{s.stats?.max ?? t('common.dash')}</td>
               </tr>

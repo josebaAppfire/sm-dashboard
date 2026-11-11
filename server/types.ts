@@ -109,8 +109,9 @@ export interface CycleTimeIssue {
   sp: number | null
   startedAt: string       // ISO — first move into an "In Progress" category status
   completedAt: string     // ISO — final entry into Done / Waiting for Release
-  cycleDays: number       // calendar days, 1 decimal
-  sprintId: number | null // sprint whose date range contains completedAt
+  cycleDays: number       // active days (Jellyfish): time spent in "In Progress" category statuses
+  elapsedDays: number     // elapsed days: first "In Progress" entry until delivery, waits included
+  sprintId: number | null // team sprint the issue belongs to; null = no sprint
 }
 
 export interface CycleTimeStats {
@@ -122,19 +123,21 @@ export interface CycleTimeStats {
 }
 
 export interface CycleTimeSprintSummary {
-  id: number
+  id: number | null   // null = issues without a sprint
   name: string
   startDate?: string
   endDate?: string
-  stats: CycleTimeStats | null
+  stats: CycleTimeStats | null     // active time (Jellyfish)
+  elapsed: CycleTimeStats | null   // elapsed time, same issues
 }
 
 export interface CycleTimeResponse {
   from: string            // YYYY-MM-DD, inclusive
   to: string              // YYYY-MM-DD, inclusive
-  sprints: CycleTimeSprintSummary[]  // team sprints overlapping [from, to]
+  sprints: CycleTimeSprintSummary[]  // team sprints overlapping [from, to], plus a null-id row for issues without a sprint
   issues: CycleTimeIssue[]
-  stats: CycleTimeStats | null
+  stats: CycleTimeStats | null     // active time (Jellyfish definition)
+  elapsed: CycleTimeStats | null   // elapsed time over the same issues
   skippedNoStart: number  // delivered issues that never went through an "In Progress" status
 }
 
