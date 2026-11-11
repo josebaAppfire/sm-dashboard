@@ -6,6 +6,7 @@ const es = {
   },
   tabs: {
     velocity: 'Velocidad',
+    velocityAuto: 'Velocidad (auto)',
     planning: 'Planning',
     burnup: 'Sprint',
   },
@@ -148,6 +149,23 @@ const es = {
     colDevs: 'Devs',
     colDevDays: 'Días-persona',
     colContext: 'Contexto',
+  },
+  velocityAuto: {
+    title: 'Velocidad desde Jira',
+    subtitle: 'Comprometido, alcance y entregado calculados automáticamente (sin L3)',
+    loading: 'Calculando velocidad desde Jira…',
+    empty: 'No hay sprints cerrados o activos para este equipo.',
+    footnote:
+      'Entregado = Done o Waiting for Release al cierre del sprint · Excluye L3 Support · Devs y días-persona del registro manual',
+    colSprint: 'Sprint',
+    colVsManual: 'vs manual',
+    colL3: 'L3 entregado',
+    match: 'OK',
+    active: 'activo',
+    inProgress: '—',
+    teamAria: 'Equipo',
+    limitAria: 'Número de sprints',
+    sprintsCount: '{{count}} sprints',
   },
   planning: {
     title: 'Calculadora de Planning',

@@ -16,6 +16,7 @@ import {
 } from './store.js'
 import { type SprintRecord } from './types.js'
 import { findBurnupTeam, getBurnupTeams, sprintMatchesTeam } from './teams.js'
+import { fetchAutoVelocity } from './velocity-auto.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -35,6 +36,7 @@ app.get('/api/config', (_req, res) => {
 
 const burnupCache = new Map<string, { ts: number; data: unknown }>()
 const CACHE_TTL_MS = 60_000
+const AUTO_VELOCITY_CACHE_TTL_MS = 600_000
 
 app.get('/api/burnup', async (req, res) => {
   let config
@@ -174,6 +176,48 @@ app.get('/api/scope-changes', async (req, res) => {
 // -----------------------------------------------------------------------
 // Jira sprint list (for sprint selector)
 // -----------------------------------------------------------------------
+
+// GET /api/velocity-auto?team=Doom&limit=5
+app.get('/api/velocity-auto', async (req, res) => {
+  let config
+  try {
+    config = getConfig()
+  } catch (err: unknown) {
+    res.status(503).json({ error: String(err) })
+    return
+  }
+
+  const teamRaw = req.query.team ? String(req.query.team).trim() : undefined
+  const team = teamRaw ? findBurnupTeam(teamRaw) : undefined
+  if (!team) {
+    res.status(400).json({ error: 'team is required and must match a team in BURNUP_TEAMS' })
+    return
+  }
+
+  const limitRaw = Number(req.query.limit ?? 5)
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 20) : 5
+
+  const cacheKey = `velocity-auto:${team.boardId}:${team.id}:${limit}`
+  const cached = burnupCache.get(cacheKey)
+  if (cached && Date.now() - cached.ts < AUTO_VELOCITY_CACHE_TTL_MS) {
+    res.json(cached.data)
+    return
+  }
+
+  try {
+    const data = await fetchAutoVelocity(config, {
+      boardId: team.boardId,
+      teamId: team.id,
+      limit,
+    })
+    burnupCache.set(cacheKey, { ts: Date.now(), data })
+    res.json(data)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[/api/velocity-auto]', message)
+    res.status(500).json({ error: message })
+  }
+})
 
 app.get('/api/jira-sprints', async (req, res) => {
   let config

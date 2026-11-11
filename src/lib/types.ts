@@ -17,4 +17,6 @@ export type {
   ScopeChangesResponse,
   L3SupportIssue,
   InitialIssue,
+  AutoVelocitySprint,
+  AutoVelocityResponse,
 } from '../../server/types'

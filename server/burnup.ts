@@ -197,7 +197,7 @@ export async function fetchBurnup(
 // Scope changes: initial commitment vs. scope added/modified during sprint
 // -----------------------------------------------------------------------
 
-function toSp(val: string | null | undefined): number {
+export function toSp(val: string | null | undefined): number {
   if (val == null || val === '') return 0
   const n = parseFloat(val)
   return isNaN(n) ? 0 : n
@@ -214,7 +214,7 @@ function parseSprintIds(raw: string | null | undefined): Set<number> {
 }
 
 /** Reconstruct whether the issue was in the sprint at sprint start (uses sprint IDs, not names). */
-function wasInSprintAtStart(
+export function wasInSprintAtStart(
   histories: ChangelogHistory[],
   sprintId: number,
   sprintStartMs: number

@@ -158,6 +158,27 @@ export interface BurnupPoint {
   completed: number  // SP reached Done status
 }
 
+// ---- Auto velocity (Jira) ----
+
+export interface AutoVelocitySprint {
+  jiraSprintId: number
+  name: string
+  state: 'active' | 'closed' | 'future'
+  startDate: string | null
+  endDate: string | null
+  completeDate: string | null
+  committed: number
+  scope: number
+  delivered: number | null // null only if active sprint with no snapshot yet — we always compute
+  l3Delivered: number
+}
+
+export interface AutoVelocityResponse {
+  teamId: string
+  boardId: number
+  sprints: AutoVelocitySprint[]
+}
+
 export interface BurnupResponse {
   sprint: SprintMeta
   series: BurnupPoint[]

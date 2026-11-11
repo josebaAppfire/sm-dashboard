@@ -114,7 +114,12 @@ export async function exportToMd(): Promise<void> {
 // Jira sprint list
 // -----------------------------------------------------------------------
 
-import { type JiraSprintOption, type EpicOption, type ScopeChangesResponse } from './types'
+import {
+  type AutoVelocityResponse,
+  type JiraSprintOption,
+  type EpicOption,
+  type ScopeChangesResponse,
+} from './types'
 
 export async function fetchJiraSprints(
   boardId?: number,
@@ -136,6 +141,16 @@ export async function fetchJiraSprints(
 
 export async function fetchEpics(sprintId: number): Promise<EpicOption[]> {
   const res = await fetch(`/api/epics?sprintId=${sprintId}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error ?? `Server returned ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function fetchAutoVelocity(team: string, limit = 5): Promise<AutoVelocityResponse> {
+  const params = new URLSearchParams({ team, limit: String(limit) })
+  const res = await fetch('/api/velocity-auto?' + params.toString())
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? `Server returned ${res.status}`)

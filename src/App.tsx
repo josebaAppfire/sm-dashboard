@@ -3,16 +3,34 @@ import CycleTimeChart from './components/CycleTimeChart'
 import SprintTotals from './components/SprintTotals'
 import { type DateRange, toIsoDate } from './components/DateRangePicker'
 import VelocityPanel from './components/VelocityPanel'
+import AutoVelocityPanel from './components/AutoVelocityPanel'
 import PlanningCalculator from './components/PlanningCalculator'
 import ScopeChangesPanel from './components/ScopeChangesPanel'
 import InitialIssuesPanel from './components/InitialIssuesPanel'
 import LanguageSelector from './components/LanguageSelector'
-import { fetchAppConfig, fetchBurnup, fetchCycleTime, fetchSprints, fetchJiraSprints, fetchEpics, fetchScopeChanges } from './lib/api'
+import {
+  fetchAppConfig,
+  fetchAutoVelocity,
+  fetchBurnup,
+  fetchCycleTime,
+  fetchSprints,
+  fetchJiraSprints,
+  fetchEpics,
+  fetchScopeChanges,
+} from './lib/api'
 import { type AppConfig } from './lib/teams'
 import { epicDisplayName, useI18n } from './i18n/I18nContext'
-import { type BurnupResponse, type CycleTimeResponse, type SprintRecord, type JiraSprintOption, type EpicOption, type ScopeChangesResponse } from './lib/types'
+import {
+  type AutoVelocityResponse,
+  type BurnupResponse,
+  type CycleTimeResponse,
+  type SprintRecord,
+  type JiraSprintOption,
+  type EpicOption,
+  type ScopeChangesResponse,
+} from './lib/types'
 
-type Tab = 'burnup' | 'velocity' | 'planning'
+type Tab = 'burnup' | 'velocity' | 'velocityAuto' | 'planning'
 
 function defaultCycleRange(): DateRange {
   const to = new Date()
@@ -54,6 +72,7 @@ export default function App() {
   const { t, dateLocale } = useI18n()
   const TABS: { id: Tab; label: string }[] = [
     { id: 'velocity', label: t('tabs.velocity') },
+    { id: 'velocityAuto', label: t('tabs.velocityAuto') },
     { id: 'planning', label: t('tabs.planning') },
     { id: 'burnup', label: t('tabs.burnup') },
   ]
@@ -72,6 +91,15 @@ export default function App() {
   const [epicsState, setEpicsState] = useState<EpicsState>({ status: 'idle' })
   const [selectedEpicKeys, setSelectedEpicKeys] = useState<Set<string>>(new Set())
   const [scopeState, setScopeState] = useState<ScopeState>({ status: 'idle' })
+  const [autoVelocityTeam, setAutoVelocityTeam] = useState<string>('')
+  const [autoVelocityLimit, setAutoVelocityLimit] = useState(5)
+  const [autoVelocityState, setAutoVelocityState] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'ok'; data: AutoVelocityResponse }
+    | { status: 'error'; message: string }
+  >({ status: 'idle' })
+  const autoVelocityRequestRef = useRef(0)
   const burnupLeftRef = useRef<HTMLDivElement>(null)
   const [burnupBlockHeight, setBurnupBlockHeight] = useState<number | undefined>(undefined)
 
@@ -153,11 +181,32 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadSprints() }, [loadSprints])
+  const loadAutoVelocity = useCallback(async (team: string, limit: number) => {
+    if (!team) return
+    const requestId = ++autoVelocityRequestRef.current
+    setAutoVelocityState({ status: 'loading' })
+    try {
+      const data = await fetchAutoVelocity(team, limit)
+      if (requestId === autoVelocityRequestRef.current) {
+        setAutoVelocityState({ status: 'ok', data })
+      }
+    } catch (err) {
+      if (requestId === autoVelocityRequestRef.current) {
+        setAutoVelocityState({
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }, [])
+
   useEffect(() => {
     fetchAppConfig()
       .then((config) => {
         setAppConfig(config)
-        setSelectedTeam(config.teams[0]?.id ?? '')
+        const first = config.teams[0]?.id ?? ''
+        setSelectedTeam(first)
+        setAutoVelocityTeam(first)
       })
       .catch(() => setAppConfig({ jiraBaseUrl: '', teams: [] }))
   }, [])
@@ -195,8 +244,17 @@ export default function App() {
   }, [tab, cycleTime])
 
   const sprints = sprintsState.status === 'ok' ? sprintsState.data : []
+  const manualByJiraId = new Map<number, SprintRecord>()
+  for (const s of sprints) {
+    if (s.jiraSprintId != null) manualByJiraId.set(s.jiraSprintId, s)
+  }
   const jiraSprints = jiraSprintsState.status === 'ok' ? jiraSprintsState.data : []
   const epics = epicsState.status === 'ok' ? epicsState.data : []
+
+  useEffect(() => {
+    if (tab !== 'velocityAuto' || !autoVelocityTeam) return
+    void loadAutoVelocity(autoVelocityTeam, autoVelocityLimit)
+  }, [tab, autoVelocityTeam, autoVelocityLimit, loadAutoVelocity])
 
   const fmtDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' }) : ''
@@ -256,6 +314,39 @@ export default function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
           <LanguageSelector />
+          {tab === 'velocityAuto' && teams.length > 0 && (
+            <>
+              <select
+                value={autoVelocityTeam}
+                onChange={(e) => setAutoVelocityTeam(e.target.value)}
+                disabled={autoVelocityState.status === 'loading'}
+                style={selectStyle}
+                aria-label={t('velocityAuto.teamAria')}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.label}</option>
+                ))}
+              </select>
+              <select
+                value={autoVelocityLimit}
+                onChange={(e) => setAutoVelocityLimit(Number(e.target.value))}
+                disabled={autoVelocityState.status === 'loading'}
+                style={{ ...selectStyle, minWidth: 100 }}
+                aria-label={t('velocityAuto.limitAria')}
+              >
+                {[3, 5, 8, 10].map((n) => (
+                  <option key={n} value={n}>{t('velocityAuto.sprintsCount', { count: n })}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => loadAutoVelocity(autoVelocityTeam, autoVelocityLimit)}
+                disabled={autoVelocityState.status === 'loading'}
+                style={selectStyle}
+              >
+                {autoVelocityState.status === 'loading' ? t('common.loading') : t('common.refresh')}
+              </button>
+            </>
+          )}
           {tab === 'burnup' && (
             <>
               {teams.length > 0 && (
@@ -415,6 +506,19 @@ export default function App() {
             : sprintsState.status === 'error'
             ? <ErrorMsg message={sprintsState.message} />
             : <VelocityPanel sprints={sprints} onRefresh={loadSprints} />}
+        </div>
+
+        <div style={{ display: tab === 'velocityAuto' ? 'block' : 'none' }}>
+          {autoVelocityState.status === 'error' && <ErrorMsg message={autoVelocityState.message} />}
+          {(autoVelocityState.status === 'ok' ||
+            autoVelocityState.status === 'loading' ||
+            autoVelocityState.status === 'idle') && (
+            <AutoVelocityPanel
+              sprints={autoVelocityState.status === 'ok' ? autoVelocityState.data.sprints : []}
+              manualByJiraId={manualByJiraId}
+              loading={autoVelocityState.status === 'loading' || autoVelocityState.status === 'idle'}
+            />
+          )}
         </div>
 
         <div style={{ display: tab === 'planning' ? 'block' : 'none' }}>
