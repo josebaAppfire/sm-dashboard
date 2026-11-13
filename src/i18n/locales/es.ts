@@ -156,11 +156,9 @@ const es = {
     loading: 'Calculando velocidad desde Jira…',
     empty: 'No hay sprints cerrados o activos para este equipo.',
     footnote:
-      'Entregado = Done o Waiting for Release al cierre del sprint · Excluye L3 Support · Devs y días-persona del registro manual',
+      'Entregado = Done o Waiting for Release al cierre del sprint · Excluye L3 Support · Devs y días-persona editables (se guardan en sprints.json)',
     colSprint: 'Sprint',
-    colVsManual: 'vs manual',
     colL3: 'L3 entregado',
-    match: 'OK',
     active: 'activo',
     inProgress: '—',
     teamAria: 'Equipo',

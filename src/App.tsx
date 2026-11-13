@@ -288,9 +288,16 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff', color: '#111' }}>
-      <div style={{
-        borderBottom: '1px solid #e5e7eb', padding: '0 24px',
-        display: 'flex', alignItems: 'center', background: '#fff',
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        borderBottom: '1px solid #e5e7eb',
+        padding: '0 24px',
+        display: 'flex',
+        alignItems: 'center',
+        background: '#fff',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
       }}>
         <span style={{ fontWeight: 700, fontSize: 15, fontFamily: 'system-ui', marginRight: 32, padding: '14px 0' }}>
           {t('app.title')}
@@ -395,7 +402,7 @@ export default function App() {
             </>
           )}
         </div>
-      </div>
+      </header>
 
       {tab === 'burnup' && epics.length > 0 && (
         <div style={{
@@ -517,6 +524,7 @@ export default function App() {
               sprints={autoVelocityState.status === 'ok' ? autoVelocityState.data.sprints : []}
               manualByJiraId={manualByJiraId}
               loading={autoVelocityState.status === 'loading' || autoVelocityState.status === 'idle'}
+              onRefresh={loadSprints}
             />
           )}
         </div>

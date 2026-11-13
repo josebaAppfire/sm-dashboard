@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   CartesianGrid,
   Legend,
@@ -9,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { patchSprint, saveSprint } from '../lib/api'
 import { type AutoVelocitySprint, type SprintRecord } from '../lib/types'
 import { useI18n } from '../i18n/I18nContext'
 
@@ -16,6 +18,7 @@ interface Props {
   sprints: AutoVelocitySprint[]
   manualByJiraId: Map<number, SprintRecord>
   loading?: boolean
+  onRefresh: () => void
 }
 
 function rollingAvg(sprints: AutoVelocitySprint[], idx: number, window = 3): number | null {
@@ -31,8 +34,55 @@ function sprintLabel(s: AutoVelocitySprint): string {
   return m ? m[0] : s.name.replace(/\s+Doom.*$/i, '').trim() || String(s.jiraSprintId)
 }
 
-export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: Props) {
+function defaultSprintId(s: AutoVelocitySprint): string {
+  const match = s.name.match(/(?:\d{4}-)?(Q\d-\d+)\s*(.*)/i)
+  if (match) {
+    const suffix = match[2]?.replace(/^Doom:?\s*/i, '').trim()
+    return suffix ? `${match[1]} ${suffix}` : match[1]
+  }
+  return s.name
+}
+
+function recordFromAuto(s: AutoVelocitySprint, manual?: SprintRecord): SprintRecord {
+  return {
+    id: manual?.id ?? defaultSprintId(s),
+    jiraSprintId: s.jiraSprintId,
+    startDate: manual?.startDate ?? s.startDate?.slice(0, 10) ?? null,
+    endDate: manual?.endDate ?? s.endDate?.slice(0, 10) ?? null,
+    committed: manual?.committed ?? s.committed,
+    delivered: manual?.delivered ?? (s.state === 'closed' ? s.delivered : null),
+    scope: manual?.scope ?? s.scope,
+    devs: manual?.devs ?? null,
+    devDays: manual?.devDays ?? null,
+    bucketA: manual?.bucketA ?? null,
+    bucketB: manual?.bucketB ?? null,
+    context: manual?.context ?? '',
+    health: manual?.health ?? {},
+  }
+}
+
+export default function AutoVelocityPanel({ sprints, manualByJiraId, loading, onRefresh }: Props) {
   const { t } = useI18n()
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function saveCapacity(
+    s: AutoVelocitySprint,
+    field: 'devs' | 'devDays',
+    value: number | null
+  ) {
+    setSaveError(null)
+    const manual = manualByJiraId.get(s.jiraSprintId)
+    try {
+      if (manual) {
+        await patchSprint(manual.id, { [field]: value })
+      } else {
+        await saveSprint({ ...recordFromAuto(s), [field]: value })
+      }
+      onRefresh()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const committedKey = t('velocity.chartCommitted')
   const deliveredKey = t('velocity.chartDelivered')
@@ -56,7 +106,6 @@ export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: 
     t('velocity.colScope'),
     t('velocity.colDevs'),
     t('velocity.colDevDays'),
-    t('velocityAuto.colVsManual'),
     t('velocityAuto.colL3'),
   ]
 
@@ -154,6 +203,9 @@ export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: 
             </LineChart>
           </ResponsiveContainer>
           <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>{t('velocityAuto.footnote')}</p>
+          {saveError && (
+            <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>{saveError}</p>
+          )}
 
           <div style={{ marginTop: 28, overflowX: 'auto', opacity: loading ? 0.6 : 1 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -169,10 +221,6 @@ export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: 
               <tbody>
                 {sprints.map((s) => {
                   const manual = manualByJiraId.get(s.jiraSprintId)
-                  const vs =
-                    manual?.delivered != null && s.delivered != null
-                      ? s.delivered - manual.delivered
-                      : null
                   return (
                     <tr key={s.jiraSprintId} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '6px 10px', fontWeight: 600 }}>
@@ -188,26 +236,19 @@ export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: 
                         {s.state === 'active' ? t('velocityAuto.inProgress') : s.delivered}
                       </td>
                       <td style={{ padding: '6px 10px' }}>{s.scope}</td>
-                      <td style={{ padding: '6px 10px' }}>{manual?.devs ?? t('common.dash')}</td>
-                      <td style={{ padding: '6px 10px' }}>{manual?.devDays ?? t('common.dash')}</td>
-                      <td
-                        style={{
-                          padding: '6px 10px',
-                          color:
-                            vs === null
-                              ? undefined
-                              : vs === 0
-                                ? '#137333'
-                                : Math.abs(vs) <= 2
-                                  ? '#d97706'
-                                  : '#b91c1c',
-                        }}
-                      >
-                        {vs === null
-                          ? t('common.dash')
-                          : vs === 0
-                            ? t('velocityAuto.match')
-                            : `${vs > 0 ? '+' : ''}${vs} SP`}
+                      <td style={{ padding: '6px 10px' }}>
+                        <CapacityInput
+                          value={manual?.devs ?? null}
+                          disabled={loading}
+                          onSave={(v) => saveCapacity(s, 'devs', v)}
+                        />
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <CapacityInput
+                          value={manual?.devDays ?? null}
+                          disabled={loading}
+                          onSave={(v) => saveCapacity(s, 'devDays', v)}
+                        />
                       </td>
                       <td style={{ padding: '6px 10px', color: '#6b7280' }}>{s.l3Delivered}</td>
                     </tr>
@@ -219,6 +260,64 @@ export default function AutoVelocityPanel({ sprints, manualByJiraId, loading }: 
         </>
       )}
     </div>
+  )
+}
+
+const capacityInputStyle: React.CSSProperties = {
+  width: 56,
+  fontSize: 13,
+  padding: '4px 6px',
+  borderRadius: 4,
+  border: '1px solid #d1d5db',
+  fontFamily: 'system-ui',
+}
+
+function CapacityInput({
+  value,
+  disabled,
+  onSave,
+}: {
+  value: number | null
+  disabled?: boolean
+  onSave: (value: number | null) => Promise<void>
+}) {
+  const [local, setLocal] = useState(value === null ? '' : String(value))
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setLocal(value === null ? '' : String(value))
+  }, [value])
+
+  async function commit() {
+    const parsed = local.trim() === '' ? null : Number(local)
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
+      setLocal(value === null ? '' : String(value))
+      return
+    }
+    if (parsed === value) return
+    setSaving(true)
+    try {
+      await onSave(parsed)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      min={0}
+      step={1}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
+      disabled={disabled || saving}
+      style={capacityInputStyle}
+      aria-label="capacity"
+    />
   )
 }
 
