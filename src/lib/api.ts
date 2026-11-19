@@ -84,14 +84,6 @@ export async function patchSprint(
   return res.json()
 }
 
-export async function deleteSprint(id: string): Promise<void> {
-  const res = await fetch(`/api/sprints/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error((body as { error?: string }).error ?? `Server returned ${res.status}`)
-  }
-}
-
 export async function fetchPlanning(
   devDays: number,
   reference: string
@@ -103,11 +95,6 @@ export async function fetchPlanning(
     throw new Error((body as { error?: string }).error ?? `Server returned ${res.status}`)
   }
   return res.json()
-}
-
-export async function exportToMd(): Promise<void> {
-  const res = await fetch('/api/sprints/export-md', { method: 'POST' })
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
 }
 
 // -----------------------------------------------------------------------

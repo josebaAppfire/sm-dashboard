@@ -3,7 +3,6 @@ import CycleTimeChart from './components/CycleTimeChart'
 import SprintTotals from './components/SprintTotals'
 import { type DateRange, toIsoDate } from './components/DateRangePicker'
 import VelocityPanel from './components/VelocityPanel'
-import AutoVelocityPanel from './components/AutoVelocityPanel'
 import PlanningCalculator from './components/PlanningCalculator'
 import ScopeChangesPanel from './components/ScopeChangesPanel'
 import InitialIssuesPanel from './components/InitialIssuesPanel'
@@ -30,7 +29,7 @@ import {
   type ScopeChangesResponse,
 } from './lib/types'
 
-type Tab = 'burnup' | 'velocity' | 'velocityAuto' | 'planning'
+type Tab = 'burnup' | 'velocity' | 'planning'
 
 function defaultCycleRange(): DateRange {
   const to = new Date()
@@ -72,7 +71,6 @@ export default function App() {
   const { t, dateLocale } = useI18n()
   const TABS: { id: Tab; label: string }[] = [
     { id: 'velocity', label: t('tabs.velocity') },
-    { id: 'velocityAuto', label: t('tabs.velocityAuto') },
     { id: 'planning', label: t('tabs.planning') },
     { id: 'burnup', label: t('tabs.burnup') },
   ]
@@ -91,15 +89,15 @@ export default function App() {
   const [epicsState, setEpicsState] = useState<EpicsState>({ status: 'idle' })
   const [selectedEpicKeys, setSelectedEpicKeys] = useState<Set<string>>(new Set())
   const [scopeState, setScopeState] = useState<ScopeState>({ status: 'idle' })
-  const [autoVelocityTeam, setAutoVelocityTeam] = useState<string>('')
-  const [autoVelocityLimit, setAutoVelocityLimit] = useState(5)
-  const [autoVelocityState, setAutoVelocityState] = useState<
+  const [velocityTeam, setVelocityTeam] = useState<string>('')
+  const [velocityLimit, setVelocityLimit] = useState(5)
+  const [velocityState, setVelocityState] = useState<
     | { status: 'idle' }
     | { status: 'loading' }
     | { status: 'ok'; data: AutoVelocityResponse }
     | { status: 'error'; message: string }
   >({ status: 'idle' })
-  const autoVelocityRequestRef = useRef(0)
+  const velocityRequestRef = useRef(0)
   const burnupLeftRef = useRef<HTMLDivElement>(null)
   const [burnupBlockHeight, setBurnupBlockHeight] = useState<number | undefined>(undefined)
 
@@ -181,18 +179,18 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadSprints() }, [loadSprints])
-  const loadAutoVelocity = useCallback(async (team: string, limit: number) => {
+  const loadVelocity = useCallback(async (team: string, limit: number) => {
     if (!team) return
-    const requestId = ++autoVelocityRequestRef.current
-    setAutoVelocityState({ status: 'loading' })
+    const requestId = ++velocityRequestRef.current
+    setVelocityState({ status: 'loading' })
     try {
       const data = await fetchAutoVelocity(team, limit)
-      if (requestId === autoVelocityRequestRef.current) {
-        setAutoVelocityState({ status: 'ok', data })
+      if (requestId === velocityRequestRef.current) {
+        setVelocityState({ status: 'ok', data })
       }
     } catch (err) {
-      if (requestId === autoVelocityRequestRef.current) {
-        setAutoVelocityState({
+      if (requestId === velocityRequestRef.current) {
+        setVelocityState({
           status: 'error',
           message: err instanceof Error ? err.message : String(err),
         })
@@ -206,7 +204,7 @@ export default function App() {
         setAppConfig(config)
         const first = config.teams[0]?.id ?? ''
         setSelectedTeam(first)
-        setAutoVelocityTeam(first)
+        setVelocityTeam(first)
       })
       .catch(() => setAppConfig({ jiraBaseUrl: '', teams: [] }))
   }, [])
@@ -252,9 +250,9 @@ export default function App() {
   const epics = epicsState.status === 'ok' ? epicsState.data : []
 
   useEffect(() => {
-    if (tab !== 'velocityAuto' || !autoVelocityTeam) return
-    void loadAutoVelocity(autoVelocityTeam, autoVelocityLimit)
-  }, [tab, autoVelocityTeam, autoVelocityLimit, loadAutoVelocity])
+    if (tab !== 'velocity' || !velocityTeam) return
+    void loadVelocity(velocityTeam, velocityLimit)
+  }, [tab, velocityTeam, velocityLimit, loadVelocity])
 
   const fmtDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' }) : ''
@@ -321,36 +319,36 @@ export default function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
           <LanguageSelector />
-          {tab === 'velocityAuto' && teams.length > 0 && (
+          {tab === 'velocity' && teams.length > 0 && (
             <>
               <select
-                value={autoVelocityTeam}
-                onChange={(e) => setAutoVelocityTeam(e.target.value)}
-                disabled={autoVelocityState.status === 'loading'}
+                value={velocityTeam}
+                onChange={(e) => setVelocityTeam(e.target.value)}
+                disabled={velocityState.status === 'loading'}
                 style={selectStyle}
-                aria-label={t('velocityAuto.teamAria')}
+                aria-label={t('velocity.teamAria')}
               >
                 {teams.map((team) => (
                   <option key={team.id} value={team.id}>{team.label}</option>
                 ))}
               </select>
               <select
-                value={autoVelocityLimit}
-                onChange={(e) => setAutoVelocityLimit(Number(e.target.value))}
-                disabled={autoVelocityState.status === 'loading'}
+                value={velocityLimit}
+                onChange={(e) => setVelocityLimit(Number(e.target.value))}
+                disabled={velocityState.status === 'loading'}
                 style={{ ...selectStyle, minWidth: 100 }}
-                aria-label={t('velocityAuto.limitAria')}
+                aria-label={t('velocity.limitAria')}
               >
                 {[3, 5, 8, 10].map((n) => (
-                  <option key={n} value={n}>{t('velocityAuto.sprintsCount', { count: n })}</option>
+                  <option key={n} value={n}>{t('velocity.sprintsCount', { count: n })}</option>
                 ))}
               </select>
               <button
-                onClick={() => loadAutoVelocity(autoVelocityTeam, autoVelocityLimit)}
-                disabled={autoVelocityState.status === 'loading'}
+                onClick={() => loadVelocity(velocityTeam, velocityLimit)}
+                disabled={velocityState.status === 'loading'}
                 style={selectStyle}
               >
-                {autoVelocityState.status === 'loading' ? t('common.loading') : t('common.refresh')}
+                {velocityState.status === 'loading' ? t('common.loading') : t('common.refresh')}
               </button>
             </>
           )}
@@ -508,22 +506,14 @@ export default function App() {
         )}
 
         <div style={{ display: tab === 'velocity' ? 'block' : 'none' }}>
-          {sprintsState.status === 'loading'
-            ? <LoadingMsg text={t('burnup.loadingSprints')} />
-            : sprintsState.status === 'error'
-            ? <ErrorMsg message={sprintsState.message} />
-            : <VelocityPanel sprints={sprints} onRefresh={loadSprints} />}
-        </div>
-
-        <div style={{ display: tab === 'velocityAuto' ? 'block' : 'none' }}>
-          {autoVelocityState.status === 'error' && <ErrorMsg message={autoVelocityState.message} />}
-          {(autoVelocityState.status === 'ok' ||
-            autoVelocityState.status === 'loading' ||
-            autoVelocityState.status === 'idle') && (
-            <AutoVelocityPanel
-              sprints={autoVelocityState.status === 'ok' ? autoVelocityState.data.sprints : []}
+          {velocityState.status === 'error' && <ErrorMsg message={velocityState.message} />}
+          {(velocityState.status === 'ok' ||
+            velocityState.status === 'loading' ||
+            velocityState.status === 'idle') && (
+            <VelocityPanel
+              sprints={velocityState.status === 'ok' ? velocityState.data.sprints : []}
               manualByJiraId={manualByJiraId}
-              loading={autoVelocityState.status === 'loading' || autoVelocityState.status === 'idle'}
+              loading={velocityState.status === 'loading' || velocityState.status === 'idle'}
               onRefresh={loadSprints}
             />
           )}

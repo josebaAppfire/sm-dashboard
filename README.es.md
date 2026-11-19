@@ -2,7 +2,7 @@
 
 > **Idioma:** Español. Ver [README.md](README.md) para la versión en inglés.
 
-Mini web local para el Scrum Master: burnup del sprint activo con datos reales de Jira, histórico de velocidad y ayudas de planning.
+Mini web local para el Scrum Master: velocidad calculada automáticamente desde Jira, vista del sprint activo con datos reales de Jira y ayudas de planning.
 
 ## Requisitos
 
@@ -48,7 +48,7 @@ PORT=3001
 cp data/sprints.example.json data/sprints.json
 ```
 
-`data/sprints.json` guarda el histórico de velocidad del equipo y está en `.gitignore`.
+`data/sprints.json` guarda los datos que Jira no tiene (devs y días-persona por sprint, que se editan desde la pestaña Velocidad) y las referencias que usa la calculadora de Planning. Está en `.gitignore`.
 
 ### 4. Instalar dependencias y arrancar
 
@@ -71,12 +71,13 @@ Editar `SPRINT_ID` en `.env` y pulsar **Actualizar** en la web (o reiniciar el s
 sm-dashboard/
 ├── server/
 │   ├── index.ts        — Express server (/api/*)
-│   ├── burnup.ts       — lógica GreenHopper + fallback REST
+│   ├── burnup.ts       — totales del sprint y cambios de scope
+│   ├── velocity-auto.ts — velocidad por sprint desde Jira
 │   ├── jira-client.ts  — auth y fetch helpers
 │   └── types.ts        — tipos compartidos
 ├── src/
 │   ├── App.tsx
-│   ├── components/BurnupChart.tsx
+│   ├── components/VelocityPanel.tsx
 │   └── lib/
 │       ├── api.ts      — fetch /api desde el cliente
 │       └── types.ts    — re-exporta los tipos del servidor
@@ -91,6 +92,16 @@ devuelve la serie temporal completa (mismo origen que la gráfica de Jira).
 Si GreenHopper no está disponible o devuelve un error, se usa la Jira REST API oficial,
 que solo puede mostrar los totales actuales (sin línea de progreso diario). La web muestra
 un aviso amarillo en ese caso.
+
+## Pestaña Velocidad
+
+Elige un equipo (de `BURNUP_TEAMS`) y cuántos sprints mostrar. Para cada sprint cerrado o activo de ese equipo, el servidor consulta Jira y calcula:
+
+- **Comprometido:** SP de las issues que ya estaban en el sprint al empezar (reconstruido con el historial de cambios).
+- **Alcance:** SP finales del sprint.
+- **Entregado:** SP de las issues que estaban en Done o Waiting for Release al cerrar el sprint.
+
+Las issues de L3 Support se excluyen (aparecen en una columna aparte). Devs y días-persona no existen en Jira: se escriben en la tabla y se guardan en `data/sprints.json`. Los resultados se cachean 10 minutos.
 
 ## Definición de "entregado"
 

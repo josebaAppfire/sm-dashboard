@@ -2,7 +2,7 @@
 
 > **Language:** English. See [README.es.md](README.es.md) for Spanish.
 
-Local web app for Scrum Masters: active-sprint burnup with live Jira data, velocity history, and planning helpers.
+Local web app for Scrum Masters: velocity calculated automatically from Jira, active-sprint view with live Jira data, and planning helpers.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ PORT=3001
 cp data/sprints.example.json data/sprints.json
 ```
 
-`data/sprints.json` holds your team’s velocity history and is listed in `.gitignore`.
+`data/sprints.json` stores the data Jira cannot provide (devs and person-days per sprint, edited from the Velocity tab) and the references used by the Planning calculator. It is listed in `.gitignore`.
 
 ### 4. Install dependencies and run
 
@@ -71,12 +71,13 @@ Edit `SPRINT_ID` in `.env` and click **Actualizar** in the UI (or restart the se
 sm-dashboard/
 ├── server/
 │   ├── index.ts        — Express server (/api/*)
-│   ├── burnup.ts       — GreenHopper + REST fallback
+│   ├── burnup.ts       — sprint totals and scope changes
+│   ├── velocity-auto.ts — per-sprint velocity from Jira
 │   ├── jira-client.ts  — auth and fetch helpers
 │   └── types.ts        — shared types
 ├── src/
 │   ├── App.tsx
-│   ├── components/BurnupChart.tsx
+│   ├── components/VelocityPanel.tsx
 │   └── lib/
 │       ├── api.ts      — client calls to /api
 │       └── types.ts    — re-exports server types
@@ -88,6 +89,16 @@ sm-dashboard/
 The server first calls the internal GreenHopper endpoint (`scopechangeburndownchart`), which returns the full time series (same source as Jira’s chart).
 
 If GreenHopper is unavailable or errors, it falls back to the official Jira REST API, which only exposes current totals (no daily progress line). The UI shows a yellow notice in that case.
+
+## Velocity tab
+
+Pick a team (from `BURNUP_TEAMS`) and how many sprints to show. For each closed or active sprint of that team, the server reads Jira and calculates:
+
+- **Committed:** SP of the issues already in the sprint when it started (rebuilt from the changelog).
+- **Scope:** final SP in the sprint.
+- **Delivered:** SP of issues that were in Done or Waiting for Release when the sprint closed.
+
+L3 Support issues are excluded (shown in a separate column). Devs and person-days are not in Jira: type them in the table and they are saved to `data/sprints.json`. Results are cached for 10 minutes.
 
 ## Definition of “done” (delivered)
 
