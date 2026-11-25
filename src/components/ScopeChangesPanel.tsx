@@ -2,6 +2,8 @@ import { type ScopeChangesResponse, type ScopeChange, type L3SupportIssue } from
 import { jiraIssueUrl } from '../lib/teams'
 import { useI18n } from '../i18n/I18nContext'
 
+const DELIVERED_STATUSES = new Set(['done', 'waiting for release'])
+
 interface Props {
   data: ScopeChangesResponse
   jiraBaseUrl: string
@@ -12,6 +14,11 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
   const hasDelta = data.scopeDelta !== 0
   const deltaColor = data.scopeDelta > 0 ? '#b91c1c' : data.scopeDelta < 0 ? '#137333' : '#374151'
   const deltaPrefix = data.scopeDelta > 0 ? '+' : ''
+  // Completed/pending are measured over the SP added or changed during the sprint
+  // (the issues listed in this table), using each issue's delta.
+  const isDelivered = (status: string) => DELIVERED_STATUSES.has(status.toLowerCase())
+  const completedSp = data.changes.filter((c) => isDelivered(c.status)).reduce((sum, c) => sum + c.delta, 0)
+  const pendingSp = data.changes.filter((c) => !isDelivered(c.status)).reduce((sum, c) => sum + c.delta, 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '0 24px 24px', fontFamily: 'system-ui, sans-serif' }}>
@@ -35,6 +42,16 @@ export default function ScopeChangesPanel({ data, jiraBaseUrl }: Props) {
           color={hasDelta ? deltaColor : '#9ca3af'}
         />
         <Stat label={t('scope.currentScope')} value={`${data.currentScope} SP`} bold />
+        <Stat
+          label={t('scope.completedSp')}
+          value={completedSp !== 0 ? `${completedSp} SP` : t('common.dash')}
+          color={completedSp !== 0 ? '#166534' : '#9ca3af'}
+        />
+        <Stat
+          label={t('scope.pendingSp')}
+          value={pendingSp !== 0 ? `${pendingSp} SP` : t('common.dash')}
+          color={pendingSp > 0 ? '#b91c1c' : '#9ca3af'}
+        />
       </div>
 
       {data.changes.length === 0 ? (
