@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { type SprintRecord } from '../lib/types'
+import { type AutoVelocitySprint, type SprintRecord } from '../lib/types'
+import { sprintLabel } from '../lib/sprintLabel'
 import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
-  sprints: SprintRecord[]
+  sprints: AutoVelocitySprint[]
+  manualByJiraId: Map<number, SprintRecord>
+  loading?: boolean
+}
+
+type ReferenceCandidate = {
+  key: string
+  id: string
+  delivered: number
+  devDays: number | null
 }
 
 type PlanningDerived = {
@@ -23,17 +33,24 @@ function calcDevDays(absences: number[], sprintDays: number) {
 const DEFAULT_CONSERVATIVE_BUFFER = 8
 const MAX_CONSERVATIVE_BUFFER = 50
 
-export default function PlanningCalculator({ sprints }: Props) {
+export default function PlanningCalculator({ sprints, manualByJiraId, loading }: Props) {
   const { t } = useI18n()
-  const referenceCandidates = sprints.filter(
-    (s) => s.delivered != null && s.devDays != null
-  )
+  const referenceCandidates: ReferenceCandidate[] = sprints
+    .filter((s) => s.state === 'closed' && s.delivered != null)
+    .map((s) => ({
+      key: String(s.jiraSprintId),
+      id: sprintLabel(s),
+      delivered: s.delivered ?? 0,
+      devDays: manualByJiraId.get(s.jiraSprintId)?.devDays ?? null,
+    }))
+  const selectableCandidates = referenceCandidates.filter((s) => s.devDays != null && s.devDays > 0)
 
-  const defaultRef = referenceCandidates[referenceCandidates.length - 1]?.id ?? ''
+  const defaultRef = selectableCandidates[selectableCandidates.length - 1]?.key ?? ''
 
   const [sprintDays, setSprintDays] = useState(10)
   const [teamSize, setTeamSize] = useState(6)
   const [referenceId, setReferenceId] = useState(defaultRef)
+  const [referencePicked, setReferencePicked] = useState(false)
   const [referenceSP, setReferenceSP] = useState<number | ''>('')
   const [conservativeBuffer, setConservativeBuffer] = useState<number | ''>(DEFAULT_CONSERVATIVE_BUFFER)
   const [devCount, setDevCount] = useState(6)
@@ -41,7 +58,7 @@ export default function PlanningCalculator({ sprints }: Props) {
   const [goalPlanned, setGoalPlanned] = useState<number | ''>('')
   const [goalRelated, setGoalRelated] = useState<number | ''>('')
 
-  const selectedRef = referenceCandidates.find((s) => s.id === referenceId) ?? null
+  const selectedRef = selectableCandidates.find((s) => s.key === referenceId) ?? null
   const originalDelivered = selectedRef?.delivered ?? null
 
   useEffect(() => {
@@ -53,9 +70,12 @@ export default function PlanningCalculator({ sprints }: Props) {
     })
   }, [devCount])
 
+  const selectionValid = selectableCandidates.some((s) => s.key === referenceId)
+
   useEffect(() => {
-    if (defaultRef && !referenceId) setReferenceId(defaultRef)
-  }, [defaultRef, referenceId])
+    if (loading) return
+    if (!referencePicked || !selectionValid) setReferenceId(defaultRef)
+  }, [loading, defaultRef, referencePicked, selectionValid])
 
   useEffect(() => {
     if (selectedRef?.delivered != null) {
@@ -115,19 +135,39 @@ export default function PlanningCalculator({ sprints }: Props) {
       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           <FormRow label={t('planning.referenceSprint')} hint={t('planning.referenceHint')}>
-            <select value={referenceId} onChange={(e) => setReferenceId(e.target.value)} style={inputStyle}>
-              <option value="">{t('planning.selectPlaceholder')}</option>
-              {referenceCandidates.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {t('planning.referenceOption', {
-                    id: s.id,
-                    delivered: s.delivered ?? 0,
-                    devDays: s.devDays ?? 0,
-                  })}
-                </option>
-              ))}
+            <select
+              value={referenceId}
+              onChange={(e) => {
+                setReferenceId(e.target.value)
+                setReferencePicked(true)
+              }}
+              disabled={loading && referenceCandidates.length === 0}
+              style={inputStyle}
+            >
+              <option value="">
+                {loading && referenceCandidates.length === 0
+                  ? t('common.loading')
+                  : t('planning.selectPlaceholder')}
+              </option>
+              {referenceCandidates.map((s) => {
+                const hasDevDays = s.devDays != null && s.devDays > 0
+                return (
+                  <option key={s.key} value={s.key} disabled={!hasDevDays}>
+                    {hasDevDays
+                      ? t('planning.referenceOption', {
+                          id: s.id,
+                          delivered: s.delivered,
+                          devDays: s.devDays ?? 0,
+                        })
+                      : t('planning.referenceOptionNoDevDays', {
+                          id: s.id,
+                          delivered: s.delivered,
+                        })}
+                  </option>
+                )
+              })}
             </select>
-            {referenceCandidates.length === 0 && (
+            {!loading && selectableCandidates.length === 0 && (
               <span style={{ fontSize: 12, color: '#d97706' }}>
                 {t('planning.noReference')}
               </span>

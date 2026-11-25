@@ -177,7 +177,7 @@ app.get('/api/scope-changes', async (req, res) => {
 // Jira sprint list (for sprint selector)
 // -----------------------------------------------------------------------
 
-// GET /api/velocity-auto?team=Doom&limit=5
+// GET /api/velocity-auto?team=Doom&limit=5&refresh=1
 app.get('/api/velocity-auto', async (req, res) => {
   let config
   try {
@@ -197,9 +197,10 @@ app.get('/api/velocity-auto', async (req, res) => {
   const limitRaw = Number(req.query.limit ?? 5)
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 20) : 5
 
+  const refresh = req.query.refresh === '1' || req.query.refresh === 'true'
   const cacheKey = `velocity-auto:${team.boardId}:${team.id}:${limit}`
   const cached = burnupCache.get(cacheKey)
-  if (cached && Date.now() - cached.ts < AUTO_VELOCITY_CACHE_TTL_MS) {
+  if (!refresh && cached && Date.now() - cached.ts < AUTO_VELOCITY_CACHE_TTL_MS) {
     res.json(cached.data)
     return
   }

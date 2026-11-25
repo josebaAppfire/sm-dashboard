@@ -157,6 +157,8 @@ const en = {
     referenceHint: 'Latest comparable sprint with person-days recorded',
     selectPlaceholder: '— Select —',
     referenceOption: '{{id}} — {{delivered}} SP delivered ({{devDays}} person-days)',
+    referenceOptionNoDevDays:
+      '{{id}} — {{delivered}} SP delivered (person-days missing in Velocity)',
     noReference:
       'No sprint has person-days recorded. Add them in the Velocity panel.',
     resetReference: 'Reset to {{original}} SP',

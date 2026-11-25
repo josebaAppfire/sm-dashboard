@@ -158,6 +158,8 @@ const es = {
     selectPlaceholder: '— Seleccionar —',
     referenceOption:
       '{{id}} — {{delivered}} SP entregados ({{devDays}} días-persona)',
+    referenceOptionNoDevDays:
+      '{{id}} — {{delivered}} SP entregados (faltan días-persona en Velocidad)',
     noReference:
       'Ningún sprint tiene días-persona registrados. Edítalos en el panel de Velocidad.',
     resetReference: 'Restablecer a {{original}} SP',

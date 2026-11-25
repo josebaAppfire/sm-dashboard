@@ -142,8 +142,13 @@ export async function fetchEpics(sprintId: number): Promise<EpicOption[]> {
   return res.json()
 }
 
-export async function fetchAutoVelocity(team: string, limit = 5): Promise<AutoVelocityResponse> {
+export async function fetchAutoVelocity(
+  team: string,
+  limit = 5,
+  refresh = false
+): Promise<AutoVelocityResponse> {
   const params = new URLSearchParams({ team, limit: String(limit) })
+  if (refresh) params.set('refresh', '1')
   const res = await fetch('/api/velocity-auto?' + params.toString())
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))

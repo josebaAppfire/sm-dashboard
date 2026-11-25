@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { patchSprint, saveSprint } from '../lib/api'
 import { type AutoVelocitySprint, type SprintRecord } from '../lib/types'
+import { sprintLabel } from '../lib/sprintLabel'
 import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
@@ -27,11 +28,6 @@ function rollingAvg(sprints: AutoVelocitySprint[], idx: number, window = 3): num
   if (withDelivered.length < window) return null
   const last = withDelivered.slice(-window)
   return Math.round(last.reduce((sum, x) => sum + (x.delivered ?? 0), 0) / window)
-}
-
-function sprintLabel(s: AutoVelocitySprint): string {
-  const m = s.name.match(/\d{4}-Q\d-\d+/i)
-  return m ? m[0] : s.name.replace(/\s+Doom.*$/i, '').trim() || String(s.jiraSprintId)
 }
 
 function defaultSprintId(s: AutoVelocitySprint): string {
