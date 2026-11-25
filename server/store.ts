@@ -55,7 +55,8 @@ export function deleteSprint(id: string): void {
 
 export function calculatePlanning(
   devDays: number,
-  referenceId: string
+  referenceId: string,
+  options?: { referenceDelivered?: number; conservativePct?: number }
 ): PlanningResult {
   const sprints = readStore()
   const ref = sprints.find((s) => s.id === referenceId)
@@ -63,22 +64,30 @@ export function calculatePlanning(
   if (!ref.delivered) throw new Error(`Reference sprint "${referenceId}" has no delivered SP.`)
   if (!ref.devDays) throw new Error(`Reference sprint "${referenceId}" has no devDays recorded.`)
 
+  const delivered =
+    options?.referenceDelivered != null && options.referenceDelivered > 0
+      ? options.referenceDelivered
+      : ref.delivered
+  const conservativePct =
+    options?.conservativePct != null &&
+    options.conservativePct >= 50 &&
+    options.conservativePct <= 100
+      ? options.conservativePct
+      : 92
+
   const capacityPct = devDays / ref.devDays
-  const ceiling = Math.round(ref.delivered * capacityPct)
-  const conservative = Math.round(ceiling * 0.92) // ~8% buffer
-  const bucketB = Math.round(ceiling * 0.55)
-  const bucketA = ceiling - bucketB
+  const ceiling = Math.round(delivered * capacityPct)
+  const conservative = Math.round(ceiling * (conservativePct / 100))
 
   return {
     referenceSprintId: ref.id,
-    referenceDelivered: ref.delivered,
+    referenceDelivered: delivered,
     referenceDevDays: ref.devDays,
     inputDevDays: devDays,
     capacityPct,
     ceiling,
     conservative,
-    bucketB,
-    bucketA,
+    conservativePct,
   }
 }
 

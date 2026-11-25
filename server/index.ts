@@ -313,7 +313,7 @@ app.delete('/api/sprints/:id', (req, res) => {
 // Planning calculator
 // -----------------------------------------------------------------------
 
-// GET /api/planning?devDays=28&reference=Q3-2
+// GET /api/planning?devDays=28&reference=Q3-2&referenceDelivered=38&conservativePct=92
 app.get('/api/planning', (req, res) => {
   try {
     const devDays = Number(req.query.devDays)
@@ -322,7 +322,16 @@ app.get('/api/planning', (req, res) => {
       res.status(400).json({ error: 'devDays and reference are required' })
       return
     }
-    res.json(calculatePlanning(devDays, reference))
+    const referenceDelivered = req.query.referenceDelivered != null
+      ? Number(req.query.referenceDelivered)
+      : undefined
+    const conservativePct = req.query.conservativePct != null
+      ? Number(req.query.conservativePct)
+      : undefined
+    res.json(calculatePlanning(devDays, reference, {
+      referenceDelivered: Number.isFinite(referenceDelivered) ? referenceDelivered : undefined,
+      conservativePct: Number.isFinite(conservativePct) ? conservativePct : undefined,
+    }))
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     res.status(400).json({ error: message })

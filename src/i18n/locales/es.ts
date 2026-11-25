@@ -152,8 +152,7 @@ const es = {
   },
   planning: {
     title: 'Calculadora de Planning',
-    subtitle:
-      'Calcula el techo de SP y el reparto cubeta A / cubeta B para el próximo sprint.',
+    subtitle: 'Calcula el techo de SP y el compromiso para el próximo sprint.',
     referenceSprint: 'Sprint de referencia',
     referenceHint: 'Último sprint comparable con días-persona registrados',
     selectPlaceholder: '— Seleccionar —',
@@ -161,21 +160,19 @@ const es = {
       '{{id}} — {{delivered}} SP entregados ({{devDays}} días-persona)',
     noReference:
       'Ningún sprint tiene días-persona registrados. Edítalos en el panel de Velocidad.',
+    resetReference: 'Restablecer a {{original}} SP',
     sprintWorkdays: 'Días laborables del sprint',
     teamSize: 'Devs en el equipo (total)',
     teamSizeHint: 'Para capacidad teórica máxima',
     devsAvailable: 'Devs disponibles este sprint',
     availabilityTitle: 'Disponibilidad por dev',
     availabilityHint:
-      'Deja "días propios" en 0 para usar los días del sprint. "Ausencias" = días de baja/vacaciones.',
+      'Neto = días laborables del sprint − ausencias (vacaciones, baja, formación…).',
     colDev: 'Dev',
-    colOwnDays: 'Días propios (0 = sprint)',
     colAbsences: 'Ausencias (días)',
     colNet: 'Neto',
     totalPersonDays: 'Total días-persona disponibles',
     theoreticalMax: 'Máximo teórico ({{devs}} devs × {{days}} días)',
-    calculate: 'Calcular techo',
-    calculating: 'Calculando…',
     goalTitle: '% SP orientados a goals',
     goalSubtitle:
       'Calcula qué porcentaje de los SP planificados están vinculados a los goals del sprint.',
@@ -203,7 +200,8 @@ const es = {
       'Teórica → porcentaje del equipo disponible. Ponla en Confluence para el PO.',
     ceiling: 'Techo calculado',
     conservative: 'Compromiso conservador',
-    conservativeSub: 'Recomendado para Planning (−8%)',
+    conservativeSub: 'Recomendado para Planning',
+    conservativeBuffer: 'Margen sobre el techo (%)',
     ceilingFormula:
       'Fórmula techo: {{available}} ÷ {{refDevDays}} = {{ratio}} × {{refDelivered}} SP = {{ceiling}} SP',
   },

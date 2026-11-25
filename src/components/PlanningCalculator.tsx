@@ -1,15 +1,27 @@
-import { useEffect, useState } from 'react'
-import { type SprintRecord, type PlanningResult } from '../lib/types'
-import { fetchPlanning } from '../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { type SprintRecord } from '../lib/types'
 import { useI18n } from '../i18n/I18nContext'
 
 interface Props {
   sprints: SprintRecord[]
 }
 
-function calcDevDays(devsWithDays: { days: number; absences: number }[], sprintDays: number) {
-  return devsWithDays.reduce((sum, d) => sum + (d.days > 0 ? d.days : sprintDays) - d.absences, 0)
+type PlanningDerived = {
+  referenceSprintId: string
+  referenceDelivered: number
+  originalReferenceDelivered: number
+  referenceDevDays: number
+  capacityPct: number
+  ceiling: number
+  conservative: number
 }
+
+function calcDevDays(absences: number[], sprintDays: number) {
+  return absences.reduce((sum, a) => sum + sprintDays - a, 0)
+}
+
+const DEFAULT_CONSERVATIVE_BUFFER = 8
+const MAX_CONSERVATIVE_BUFFER = 50
 
 export default function PlanningCalculator({ sprints }: Props) {
   const { t } = useI18n()
@@ -22,20 +34,20 @@ export default function PlanningCalculator({ sprints }: Props) {
   const [sprintDays, setSprintDays] = useState(10)
   const [teamSize, setTeamSize] = useState(6)
   const [referenceId, setReferenceId] = useState(defaultRef)
+  const [referenceSP, setReferenceSP] = useState<number | ''>('')
+  const [conservativeBuffer, setConservativeBuffer] = useState<number | ''>(DEFAULT_CONSERVATIVE_BUFFER)
   const [devCount, setDevCount] = useState(6)
-  const [devRows, setDevRows] = useState<{ days: number; absences: number }[]>(
-    Array.from({ length: 6 }, () => ({ days: 0, absences: 0 }))
-  )
-  const [result, setResult] = useState<PlanningResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [absences, setAbsences] = useState<number[]>(() => Array(6).fill(0))
   const [goalPlanned, setGoalPlanned] = useState<number | ''>('')
   const [goalRelated, setGoalRelated] = useState<number | ''>('')
 
+  const selectedRef = referenceCandidates.find((s) => s.id === referenceId) ?? null
+  const originalDelivered = selectedRef?.delivered ?? null
+
   useEffect(() => {
-    setDevRows((prev) => {
+    setAbsences((prev) => {
       if (devCount > prev.length) {
-        return [...prev, ...Array.from({ length: devCount - prev.length }, () => ({ days: 0, absences: 0 }))]
+        return [...prev, ...Array(devCount - prev.length).fill(0)]
       }
       return prev.slice(0, devCount)
     })
@@ -45,9 +57,35 @@ export default function PlanningCalculator({ sprints }: Props) {
     if (defaultRef && !referenceId) setReferenceId(defaultRef)
   }, [defaultRef, referenceId])
 
-  const devDays = calcDevDays(devRows, sprintDays)
+  useEffect(() => {
+    if (selectedRef?.delivered != null) {
+      setReferenceSP(selectedRef.delivered)
+    } else {
+      setReferenceSP('')
+    }
+  }, [referenceId, selectedRef?.delivered])
+
+  const devDays = calcDevDays(absences, sprintDays)
   const theoreticalMax = teamSize * sprintDays
   const theoreticalPct = theoreticalMax > 0 ? devDays / theoreticalMax : 0
+
+  const planning = useMemo((): PlanningDerived | null => {
+    if (!selectedRef?.devDays || devDays <= 0) return null
+    const sp = typeof referenceSP === 'number' ? referenceSP : 0
+    const buffer = typeof conservativeBuffer === 'number' ? conservativeBuffer : 0
+    const capacityPct = devDays / selectedRef.devDays
+    const ceiling = Math.round(sp * capacityPct)
+    const conservative = Math.round(ceiling * ((100 - buffer) / 100))
+    return {
+      referenceSprintId: selectedRef.id,
+      referenceDelivered: sp,
+      originalReferenceDelivered: selectedRef.delivered ?? sp,
+      referenceDevDays: selectedRef.devDays,
+      capacityPct,
+      ceiling,
+      conservative,
+    }
+  }, [selectedRef, devDays, referenceSP, conservativeBuffer])
 
   const goalPct =
     typeof goalPlanned === 'number' &&
@@ -57,24 +95,15 @@ export default function PlanningCalculator({ sprints }: Props) {
       ? Math.round((goalRelated / goalPlanned) * 100)
       : null
 
-  async function handleCalculate() {
-    if (!referenceId) return
-    setLoading(true)
-    setError(null)
-    try {
-      const r = await fetchPlanning(devDays, referenceId)
-      setResult(r)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
+  function updateAbsences(i: number, val: string) {
+    const n = val === '' ? 0 : Math.max(0, Number(val))
+    setAbsences((prev) => prev.map((a, idx) => idx === i ? n : a))
   }
 
-  function updateDevRow(i: number, field: 'days' | 'absences', val: string) {
-    const n = val === '' ? 0 : Number(val)
-    setDevRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: n } : r))
-  }
+  const referenceEdited =
+    originalDelivered != null &&
+    typeof referenceSP === 'number' &&
+    referenceSP !== originalDelivered
 
   return (
     <div style={{ padding: '24px', maxWidth: 860, fontFamily: 'system-ui, sans-serif' }}>
@@ -132,24 +161,19 @@ export default function PlanningCalculator({ sprints }: Props) {
               <thead>
                 <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                   <th style={thStyle}>{t('planning.colDev')}</th>
-                  <th style={thStyle}>{t('planning.colOwnDays')}</th>
                   <th style={thStyle}>{t('planning.colAbsences')}</th>
                   <th style={thStyle}>{t('planning.colNet')}</th>
                 </tr>
               </thead>
               <tbody>
-                {devRows.map((row, i) => {
-                  const net = (row.days > 0 ? row.days : sprintDays) - row.absences
+                {absences.map((value, i) => {
+                  const net = sprintDays - value
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '4px 8px', color: '#555' }}>{t('planning.colDev')} {i + 1}</td>
                       <td style={{ padding: '4px 8px' }}>
-                        <input type="number" value={row.days || ''} min={0} style={{ ...inputStyle, width: 70 }}
-                          onChange={(e) => updateDevRow(i, 'days', e.target.value)} placeholder="0" />
-                      </td>
-                      <td style={{ padding: '4px 8px' }}>
-                        <input type="number" value={row.absences || ''} min={0} style={{ ...inputStyle, width: 70 }}
-                          onChange={(e) => updateDevRow(i, 'absences', e.target.value)} placeholder="0" />
+                        <input type="number" value={value || ''} min={0} style={{ ...inputStyle, width: 70 }}
+                          onChange={(e) => updateAbsences(i, e.target.value)} placeholder="0" />
                       </td>
                       <td style={{ padding: '4px 8px', fontWeight: 600, color: net <= 0 ? '#ef4444' : '#111' }}>
                         {net}d
@@ -160,13 +184,13 @@ export default function PlanningCalculator({ sprints }: Props) {
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid #e5e7eb' }}>
-                  <td colSpan={3} style={{ padding: '6px 8px', fontWeight: 600, fontSize: 13 }}>
+                  <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 600, fontSize: 13 }}>
                     {t('planning.totalPersonDays')}
                   </td>
                   <td style={{ padding: '6px 8px', fontWeight: 700, fontSize: 14 }}>{devDays}d</td>
                 </tr>
                 <tr>
-                  <td colSpan={3} style={{ padding: '2px 8px', fontSize: 12, color: '#888' }}>
+                  <td colSpan={2} style={{ padding: '2px 8px', fontSize: 12, color: '#888' }}>
                     {t('planning.theoreticalMax', { devs: teamSize, days: sprintDays })}
                   </td>
                   <td style={{ padding: '2px 8px', fontSize: 12, color: '#888' }}>{theoreticalMax}d</td>
@@ -174,33 +198,21 @@ export default function PlanningCalculator({ sprints }: Props) {
               </tfoot>
             </table>
           </div>
-
-          <button
-            onClick={handleCalculate}
-            disabled={loading || !referenceId || devDays <= 0}
-            style={{
-              padding: '9px 20px', fontSize: 14, fontWeight: 600, borderRadius: 7,
-              background: '#1a73e8', color: '#fff', border: 'none', cursor: 'pointer',
-              opacity: (!referenceId || devDays <= 0) ? 0.5 : 1,
-            }}
-          >
-            {loading ? t('planning.calculating') : t('planning.calculate')}
-          </button>
-
-          {error && (
-            <div style={{ fontSize: 13, color: '#b91c1c', padding: '8px 12px', background: '#fef2f2', borderRadius: 6 }}>
-              {error}
-            </div>
-          )}
         </div>
 
         <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {result && (
+          {planning && (
             <ResultPanel
-              result={result}
+              planning={planning}
               devDays={devDays}
               theoreticalMax={theoreticalMax}
               theoreticalPct={theoreticalPct}
+              referenceSP={referenceSP}
+              referenceEdited={referenceEdited}
+              onReferenceSPChange={setReferenceSP}
+              onReferenceSPReset={() => originalDelivered != null && setReferenceSP(originalDelivered)}
+              conservativeBuffer={conservativeBuffer}
+              onConservativeBufferChange={setConservativeBuffer}
             />
           )}
 
@@ -302,32 +314,78 @@ export default function PlanningCalculator({ sprints }: Props) {
 }
 
 function ResultPanel({
-  result,
+  planning,
   devDays,
   theoreticalMax,
   theoreticalPct,
+  referenceSP,
+  referenceEdited,
+  onReferenceSPChange,
+  onReferenceSPReset,
+  conservativeBuffer,
+  onConservativeBufferChange,
 }: {
-  result: PlanningResult
+  planning: PlanningDerived
   devDays: number
   theoreticalMax: number
   theoreticalPct: number
+  referenceSP: number | ''
+  referenceEdited: boolean
+  onReferenceSPChange: (v: number | '') => void
+  onReferenceSPReset: () => void
+  conservativeBuffer: number | ''
+  onConservativeBufferChange: (v: number | '') => void
 }) {
   const { t } = useI18n()
-  const refPct = Math.round(result.capacityPct * 100)
+  const refPct = Math.round(planning.capacityPct * 100)
   const theoPct = Math.round(theoreticalPct * 100)
+
+  const referenceValue = (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+      {referenceEdited && (
+        <button
+          type="button"
+          onClick={onReferenceSPReset}
+          title={t('planning.resetReference', { original: planning.originalReferenceDelivered })}
+          aria-label={t('planning.resetReference', { original: planning.originalReferenceDelivered })}
+          style={resetButtonStyle}
+        >
+          ↺
+        </button>
+      )}
+      <input
+        type="number"
+        value={referenceSP}
+        min={0}
+        aria-label={t('planning.labelReference')}
+        style={{
+          ...inlineInputStyle,
+          width: 56,
+          fontSize: 15,
+          fontWeight: 600,
+          color: referenceEdited ? '#1a73e8' : '#111',
+        }}
+        onChange={(e) => {
+          const v = e.target.value === '' ? '' : Math.max(0, Number(e.target.value))
+          onReferenceSPChange(v)
+        }}
+      />
+      SP
+    </span>
+  )
 
   return (
     <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
-        {t('planning.resultTitle', { ref: result.referenceSprintId })}
+        {t('planning.resultTitle', { ref: planning.referenceSprintId })}
       </div>
 
       <FormulaLine
         label={t('planning.labelReference')}
-        value={`${result.referenceDelivered} SP`}
+        value={referenceValue}
         sub={t('planning.referenceSub', {
-          id: result.referenceSprintId,
-          devDays: result.referenceDevDays,
+          id: planning.referenceSprintId,
+          devDays: planning.referenceDevDays,
         })}
       />
       <FormulaLine
@@ -341,11 +399,11 @@ function ResultPanel({
       <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
         <CapacityBadge
           label={t('planning.histCapacity')}
-          sub={`vs. ${result.referenceSprintId}`}
+          sub={`vs. ${planning.referenceSprintId}`}
           pct={refPct}
           tip={t('planning.histCapacityTip', {
             available: devDays,
-            refDevDays: result.referenceDevDays,
+            refDevDays: planning.referenceDevDays,
           })}
         />
         <CapacityBadge
@@ -366,19 +424,38 @@ function ResultPanel({
       </div>
 
       <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
-      <FormulaLine label={t('planning.ceiling')} value={`${result.ceiling} SP`} big />
+      <FormulaLine label={t('planning.ceiling')} value={`${planning.ceiling} SP`} big />
       <FormulaLine
         label={t('planning.conservative')}
-        value={`${result.conservative} SP`}
-        sub={t('planning.conservativeSub')}
+        value={`${planning.conservative} SP`}
+        sub={
+          <>
+            {t('planning.conservativeSub')} (−
+            <input
+              type="number"
+              value={conservativeBuffer}
+              min={0}
+              max={MAX_CONSERVATIVE_BUFFER}
+              aria-label={t('planning.conservativeBuffer')}
+              style={{ ...inlineInputStyle, width: 34, fontSize: 11, color: '#6b7280' }}
+              onChange={(e) => {
+                const v = e.target.value === ''
+                  ? ''
+                  : Math.min(MAX_CONSERVATIVE_BUFFER, Math.max(0, Number(e.target.value)))
+                onConservativeBufferChange(v)
+              }}
+            />
+            %)
+          </>
+        }
       />
       <div style={{ marginTop: 12, padding: '8px 10px', background: '#fff', borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, color: '#555' }}>
         {t('planning.ceilingFormula', {
           available: devDays,
-          refDevDays: result.referenceDevDays,
-          ratio: result.capacityPct.toFixed(2),
-          refDelivered: result.referenceDelivered,
-          ceiling: result.ceiling,
+          refDevDays: planning.referenceDevDays,
+          ratio: planning.capacityPct.toFixed(2),
+          refDelivered: planning.referenceDelivered,
+          ceiling: planning.ceiling,
         })}
       </div>
     </div>
@@ -406,7 +483,7 @@ function CapacityBadge({
 function FormulaLine({
   label, value, sub, big,
 }: {
-  label: string; value: string; sub?: string; big?: boolean
+  label: string; value: React.ReactNode; sub?: React.ReactNode; big?: boolean
 }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}>
@@ -414,7 +491,7 @@ function FormulaLine({
         <span style={{ fontSize: 13, color: '#374151' }}>{label}</span>
         {sub && <div style={{ fontSize: 11, color: '#9ca3af' }}>{sub}</div>}
       </div>
-      <span style={{ fontSize: big ? 22 : 15, fontWeight: big ? 700 : 600, color: '#111' }}>
+      <span style={{ fontSize: big ? 22 : 15, fontWeight: big ? 700 : 600, color: '#111', textAlign: 'right' }}>
         {value}
       </span>
     </div>
@@ -436,6 +513,17 @@ function FormRow({ label, hint, children }: { label: string; hint?: string; chil
 const inputStyle: React.CSSProperties = {
   padding: '5px 8px', fontSize: 13, border: '1px solid #d1d5db',
   borderRadius: 5, outline: 'none', boxSizing: 'border-box',
+}
+
+const inlineInputStyle: React.CSSProperties = {
+  padding: '0 2px', border: 'none', borderBottom: '1px dashed #9ca3af',
+  background: 'transparent', outline: 'none', textAlign: 'right',
+  fontFamily: 'inherit', MozAppearance: 'textfield',
+}
+
+const resetButtonStyle: React.CSSProperties = {
+  fontSize: 13, color: '#1a73e8', background: 'none', border: 'none',
+  cursor: 'pointer', padding: 0, lineHeight: 1,
 }
 
 const thStyle: React.CSSProperties = {

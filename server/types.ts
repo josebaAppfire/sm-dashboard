@@ -37,8 +37,7 @@ export interface PlanningResult {
   capacityPct: number         // 0–1
   ceiling: number
   conservative: number
-  bucketB: number
-  bucketA: number
+  conservativePct: number     // e.g. 92 → conservative = ceiling × 0.92
 }
 
 // ---- Scope changes ----

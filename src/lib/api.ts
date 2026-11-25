@@ -86,9 +86,16 @@ export async function patchSprint(
 
 export async function fetchPlanning(
   devDays: number,
-  reference: string
+  reference: string,
+  options?: { referenceDelivered?: number; conservativePct?: number }
 ): Promise<PlanningResult> {
   const params = new URLSearchParams({ devDays: String(devDays), reference })
+  if (options?.referenceDelivered != null) {
+    params.set('referenceDelivered', String(options.referenceDelivered))
+  }
+  if (options?.conservativePct != null) {
+    params.set('conservativePct', String(options.conservativePct))
+  }
   const res = await fetch('/api/planning?' + params.toString())
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
