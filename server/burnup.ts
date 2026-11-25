@@ -213,12 +213,30 @@ function parseSprintIds(raw: string | null | undefined): Set<number> {
   )
 }
 
-/** Reconstruct whether the issue was in the sprint at sprint start (uses sprint IDs, not names). */
+/** Creation time of an issue in ms, or undefined if the `created` field was not fetched. */
+export function createdAtMs(issue: JiraIssue): number | undefined {
+  const raw = issue.fields?.['created']
+  if (typeof raw !== 'string') return undefined
+  const ms = new Date(raw).getTime()
+  return Number.isNaN(ms) ? undefined : ms
+}
+
+/**
+ * Reconstruct whether the issue was in the sprint at sprint start (uses sprint IDs, not names).
+ *
+ * Pass `createdMs` (the issue's creation time): an issue created after the sprint started
+ * cannot have been planned. This matters because sub-tasks, and issues created directly in
+ * the sprint, are born in it and have no "Sprint" entry in their changelog, so without this
+ * check they would be taken for planned work.
+ */
 export function wasInSprintAtStart(
   histories: ChangelogHistory[],
   sprintId: number,
-  sprintStartMs: number
+  sprintStartMs: number,
+  createdMs?: number
 ): boolean {
+  if (createdMs !== undefined && createdMs > sprintStartMs) return false
+
   const events = histories
     .flatMap((h) =>
       h.items
@@ -269,7 +287,7 @@ export async function fetchScopeChanges(
   const issues = await paginateJql(
     config,
     `sprint = ${config.sprintId}`,
-    ['summary', config.estimateField, 'status', 'issuetype'],
+    ['summary', config.estimateField, 'status', 'issuetype', 'created'],
     'changelog'
   )
 
@@ -295,7 +313,7 @@ export async function fetchScopeChanges(
 
     const status = (issue.fields?.['status'] as { name?: string } | undefined)?.name ?? '—'
 
-    const plannedAtStart = wasInSprintAtStart(histories, config.sprintId, sprintStartMs)
+    const plannedAtStart = wasInSprintAtStart(histories, config.sprintId, sprintStartMs, createdAtMs(issue))
 
     // SP changes that happened AFTER sprint start, sorted oldest first
     const spChangesAfterStart = histories

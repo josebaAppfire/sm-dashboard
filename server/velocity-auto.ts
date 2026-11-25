@@ -7,6 +7,7 @@ import {
 import {
   paginateJql,
   wasInSprintAtStart,
+  createdAtMs,
   toSp,
   type ChangelogHistory,
   type JiraIssue,
@@ -107,7 +108,7 @@ function metricsForSprint(
 
     const plannedAtStart =
       sprintStartMs > 0
-        ? wasInSprintAtStart(histories, sprint.id, sprintStartMs)
+        ? wasInSprintAtStart(histories, sprint.id, sprintStartMs, createdAtMs(issue))
         : true
 
     let initialSp: number
@@ -140,7 +141,7 @@ async function computeOneSprint(
   const issues = await paginateJql(
     config,
     `sprint = ${sprint.id}`,
-    ['summary', config.estimateField, 'status', 'issuetype'],
+    ['summary', config.estimateField, 'status', 'issuetype', 'created'],
     'changelog'
   )
   const metrics = metricsForSprint(sprint, issues, config.estimateField)
